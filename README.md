@@ -162,29 +162,12 @@ The system brings together customer information, available service packages, sal
 
 ---
 
-## Architecture
+### Technical Architecture
 
-The application uses a cloud-based architecture built around a web application, PostgreSQL database, APIs, authentication, and automated workflows.
+For a deeper look at the system design, data architecture, scheduling model,
+security approach, integrations, and application workflows:
 
-At a high level:
-
-```text
-Field Representatives / Operations / Management
-                    ↓
-             FieldOS Web App
-          TypeScript / JavaScript
-                    ↓
-                  Vercel
-                    ↓
-          Supabase / PostgreSQL
-                    ↓
-      Business Logic & Automation
-                    ↓
-   Scheduling • Sales • Territories
- Reporting • Notifications • Analytics
-```
-
-Additional technical documentation can be maintained separately without exposing proprietary production implementation details.
+**[View the detailed system architecture →](docs/architecture.md)**
 
 ## My Role
 
