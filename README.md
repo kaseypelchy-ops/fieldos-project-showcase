@@ -1,10 +1,46 @@
-## Platform Showcase
+# Field Sales Operations Platform
 
-The screenshots below highlight several parts of the FieldOS platform, including field sales activity, installation scheduling, sales processing, management reporting, territory mapping, and the sales workflow.
+A field-sales operations platform designed and developed to support door-to-door sales teams, territory management, scheduling, reporting, and operational oversight.
 
-> Customer information and other sensitive operational data have been removed or obscured for this public portfolio.
+> Production source code is maintained privately because the application contains proprietary business logic and internal infrastructure.
+
+## Overview
+
+The platform was created to replace disconnected field-sales processes with a centralized system for representatives, vendors, operations, and management.
+
+It provides address-level canvassing, territory assignments, disposition tracking, sales submissions, installation scheduling, operational reporting, invoicing workflows, and management analytics.
+
+## Key Features
+
+- Address-level canvassing and disposition tracking
+- Interactive territory maps
+- Sales submission and review workflows
+- Installation scheduling and capacity management
+- Representative and vendor management
+- Historical activity tracking
+- Management reporting and analytics
+- Invoicing and install outcome workflows
+- Automated customer communications
+- Role-based administrative tools
+
+## Technology
+
+- TypeScript
+- JavaScript
+- PostgreSQL
+- Supabase
+- Vercel
+- REST APIs
+- SQL / PLpgSQL
+- HTML / CSS
 
 ---
+
+## Platform Showcase
+
+The screenshots below highlight several parts of FieldOS, from the representative's field workflow to operations and executive reporting.
+
+> Customer information and sensitive operational data have been removed or obscured for this public portfolio.
 
 ### Company Sales Dashboard
 
@@ -12,7 +48,7 @@ The Company Sales Dashboard provides a centralized view of field sales activity 
 
 Management can review sales performance, field activity, installation status, follow-up needs, and representative performance from a single interface.
 
-**Key capabilities include:**
+**Highlights:**
 
 - Sales and field activity tracking
 - Territory and representative filtering
@@ -28,30 +64,30 @@ Management can review sales performance, field activity, installation status, fo
 
 ### Installation Schedule Availability
 
-The scheduling interface provides a real-time view of installation capacity by territory, date, and appointment window.
+The scheduling interface provides visibility into installation capacity by territory, date, and appointment window.
 
-Available capacity is reconciled against existing bookings and scheduled sales so field representatives can see which installation windows are still available.
+Availability is reconciled against existing bookings and scheduled sales so representatives and operations teams can see which installation windows remain available.
 
-**Key capabilities include:**
+**Highlights:**
 
 - Territory-level installation capacity
 - Appointment slot availability
 - Booked vs. available capacity
-- Multi-day scheduling view
+- Multi-day scheduling
 - Capacity utilization monitoring
-- Protection against overbooking
+- Overbooking prevention
 
-![Install Schedule Availability](images/02_install_schedule_availability.png)
+![Installation Schedule Availability](images/02_install_schedule_availability.png)
 
 ---
 
 ### Sales Review & Invoicing
 
-The Sales Review & Invoicing workflow provides operations staff with a dedicated interface for managing submitted sales after the initial field sale.
+The Sales Review & Invoicing interface gives operations staff a dedicated workflow for managing submitted sales after the initial field sale.
 
-Sales can move through installation, invoicing, cancellation, rescheduling, and clawback workflows without requiring staff to work directly with the underlying database.
+Sales can move through installation, invoicing, cancellation, rescheduling, and clawback workflows without staff working directly with the underlying database.
 
-**Key capabilities include:**
+**Highlights:**
 
 - Centralized sales review queue
 - Installation outcome tracking
@@ -67,11 +103,11 @@ Sales can move through installation, invoicing, cancellation, rescheduling, and 
 
 ### Executive Command Center
 
-The Executive Command Center provides management with a higher-level view of field sales performance and operational health.
+The Executive Command Center provides leadership with a higher-level view of field-sales performance and operational health.
 
-The dashboard combines sales, installations, field activity, capacity, follow-up opportunities, and team comparisons into a single management reporting interface.
+It combines sales, installations, field activity, capacity, follow-up opportunities, and team comparisons into a single management reporting interface.
 
-**Key capabilities include:**
+**Highlights:**
 
 - Executive KPI reporting
 - Submitted vs. installed sales
@@ -90,9 +126,9 @@ The dashboard combines sales, installations, field activity, capacity, follow-up
 
 Field representatives work from an interactive map containing serviceable addresses within their assigned territories.
 
-Address-level markers allow representatives to quickly see previous activity, current status, follow-up opportunities, and sales activity while working in the field.
+Address-level markers allow representatives to see previous activity, current status, follow-up opportunities, and sales activity while working in the field.
 
-**Key capabilities include:**
+**Highlights:**
 
 - Address-level territory mapping
 - Territory boundary visualization
@@ -112,7 +148,7 @@ Representatives can open an address directly from the territory map and complete
 
 The system brings together customer information, available service packages, sales outcomes, and installation scheduling into a single workflow.
 
-**Key capabilities include:**
+**Highlights:**
 
 - Address-specific sales workflow
 - Customer information capture
@@ -126,10 +162,51 @@ The system brings together customer information, available service packages, sal
 
 ---
 
-## Privacy & Source Code
+## Architecture
 
-FieldOS is a production internal business application.
+The application uses a cloud-based architecture built around a web application, PostgreSQL database, APIs, authentication, and automated workflows.
 
-The production source repository is maintained privately because it contains proprietary business logic, internal workflows, infrastructure configuration, and integrations.
+At a high level:
 
-This public repository is intended to demonstrate the scope of the platform, the problems it solves, and the technical work involved in designing and developing it.
+```text
+Field Representatives / Operations / Management
+                    ↓
+             FieldOS Web App
+          TypeScript / JavaScript
+                    ↓
+                  Vercel
+                    ↓
+          Supabase / PostgreSQL
+                    ↓
+      Business Logic & Automation
+                    ↓
+   Scheduling • Sales • Territories
+ Reporting • Notifications • Analytics
+```
+
+Additional technical documentation can be maintained separately without exposing proprietary production implementation details.
+
+## My Role
+
+I designed and developed the platform from the initial business requirements through production deployment.
+
+My work included:
+
+- Application and workflow design
+- Database architecture
+- Front-end and back-end development
+- SQL and database functions
+- API integrations
+- Territory and mapping workflows
+- Scheduling logic
+- Reporting and analytics
+- Automation
+- Deployment
+- Testing
+- Ongoing feature development and production support
+
+## Source Code
+
+The production repository is private because it contains proprietary company workflows, operational logic, infrastructure configuration, and internal integrations.
+
+This public repository is provided as a portfolio overview of the system, the problems it solves, and my work designing and developing it.
