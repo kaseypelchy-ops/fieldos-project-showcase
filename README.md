@@ -162,12 +162,15 @@ The system brings together customer information, available service packages, sal
 
 ---
 
-### Technical Architecture
+### Technical Documentation
 
-For a deeper look at the system design, data architecture, scheduling model,
-security approach, integrations, and application workflows:
+For a deeper look at the system:
 
-**[View the detailed system architecture →](docs/architecture.md)**
+- **[System Architecture →](docs/architecture.md)**  
+  Application architecture, data domains, user roles, integrations, security, and end-to-end system design.
+
+- **[Technical Overview →](docs/technical-overview.md)**  
+  Implementation details covering the technology stack, database design, scheduling concurrency, sales workflows, APIs, reporting, testing, deployment, and engineering decisions.
 
 ## My Role
 
