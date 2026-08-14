@@ -1,0 +1,4 @@
+# Include public implementation examples in GitHub Linguist statistics.
+
+examples/*.js -linguist-documentation linguist-detectable=true
+examples/*.sql -linguist-documentation linguist-detectable=true
