@@ -8,6 +8,16 @@ FieldOS was created for real field and operational use. It supports representati
 
 ---
 
+## Project Context
+
+**Development began:** February 2026  
+**Status:** Production system under ongoing development  
+**Public showcase:** August 2026
+
+This repository is a sanitized portfolio representation of a privately maintained production system. The public commit history reflects the creation and maintenance of this showcase, not the full development history of the production application.
+
+---
+
 ## Overview
 
 The project started with a fragmented field-sales process.
