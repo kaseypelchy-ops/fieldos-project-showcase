@@ -2,800 +2,548 @@
 
 ## Purpose
 
-FieldOS is a cloud-based field sales operations platform designed to connect the work performed by field representatives with the operational processes required after a customer interaction.
+FieldOS is a browser-based field-sales operating system that connects representative activity at a service location with the operational workflows that follow: pricing, installation scheduling, customer communications, sales review, invoicing, management reporting, and downstream lifecycle validation.
 
-The system brings territory management, address-level canvassing, sales submission, installation scheduling, operational review, reporting, and management visibility into a single application.
-
-This document provides a high-level technical overview of the platform architecture. Production implementation details, credentials, internal endpoints, proprietary business rules, and sensitive infrastructure configuration are intentionally excluded.
+This document describes the architecture at a public-showcase level. Production credentials, customer data, proprietary configuration, exact database schemas, internal endpoints, and vendor-specific rules are intentionally excluded.
 
 ---
 
-## Architecture Overview
+# 1. Architectural Goals
 
-FieldOS follows a modern web application architecture built around a browser-based client, application services, a PostgreSQL data layer, authentication, automated workflows, and third-party integrations.
+FieldOS was designed around a set of operational guarantees rather than around a UI framework.
+
+### Address-centered traceability
+
+The service location should remain the stable anchor for:
+
+- territory assignment,
+- field activity,
+- customer interaction history,
+- partial sale attempts,
+- completed sales,
+- installation reservations,
+- downstream lifecycle matching.
+
+### Operational consistency
+
+Actions that logically belong together should not be allowed to drift apart. A completed sale should not exist without a coherent appointment/activity state, and an appointment should not be assumed available simply because one browser rendered it that way a few seconds earlier.
+
+### Field resilience
+
+Representatives operate on mobile devices and may lose connectivity. The system must preserve meaningful work while still distinguishing network failures from database or permission failures.
+
+### Historical integrity
+
+A promotion or configuration change should not alter what a customer was quoted previously. Historical sales preserve snapshots and lifecycle events instead of relying entirely on mutable current-state configuration.
+
+### Controlled automation
+
+External systems can influence financial and operational state. Their data is validated before it is trusted to mutate invoice, install, or clawback workflows automatically.
+
+---
+
+# 2. High-Level Architecture
 
 ```mermaid
 flowchart TD
-    A[Field Representatives] --> D[FieldOS Web Application]
-    B[Operations Staff] --> D
-    C[Management] --> D
+    subgraph FIELD[Field Experience]
+      REP[Representative] --> PWA[FieldOS PWA]
+      PWA <--> LOCAL[Local Drafts / Offline Queue]
+    end
 
-    D --> E[Application Layer]
-    E --> F[Authentication & Authorization]
-    E --> G[Business Logic]
-    E --> H[API Integrations]
+    subgraph DATA[Operational Data Layer]
+      PEOPLE[Representatives / Assignments]
+      LOC[Service Locations]
+      EVT[Activity Events]
+      OFFER[Approved Offers]
+      SLOT[Install Capacity]
+      BOOK[Bookings]
+      SALE[Completed Sales]
+      PARTIAL[Partial Attempts]
+    end
 
-    G --> I[(PostgreSQL / Supabase)]
-    G --> J[Scheduling Engine]
-    G --> K[Territory & Address Workflows]
-    G --> L[Sales Processing]
-    G --> M[Reporting & Analytics]
+    PWA --> PEOPLE
+    PWA --> LOC
+    PWA --> EVT
+    PWA --> OFFER
+    PWA --> SLOT
+    PWA --> BOOK
+    PWA --> SALE
+    PWA --> PARTIAL
 
-    H --> N[Email / Notifications]
-    H --> O[External Data Sources]
-    H --> P[Operational Integrations]
+    PWA <--> RT[Realtime + Reconciliation]
+    RT <--> DATA
 
-    I --> M
+    OFFER --> SNAP[Offer Snapshot]
+    SNAP --> SALE
 
-    Q[Vercel] --> D
-    Q --> E
-```
+    subgraph SERVER[Trusted Server Workflows]
+      EMAIL[Customer Confirmation]
+      INT[Integration / Validation Jobs]
+    end
 
-At a high level, the application consists of:
+    SALE --> EMAIL --> CUSTOMER[Customer]
 
-- A web-based interface for representatives, operations, and management
-- A TypeScript / JavaScript application layer
-- PostgreSQL for transactional and operational data
-- Supabase for managed database and application services
-- Vercel for application deployment and hosting
-- API integrations for supporting workflows
-- Automated processes for notifications, reporting, and operational synchronization
+    subgraph OPS[Operations & Management]
+      TEAM[Team Dashboard]
+      ADMIN[Administration]
+      REVIEW[Sales Review]
+      FIN[Invoice / Adjustment / Clawback]
+      MGMT[Management Analytics]
+    end
 
----
+    EVT --> TEAM
+    SALE --> TEAM
+    SLOT --> TEAM
+    SALE --> REVIEW --> FIN
+    DATA --> ADMIN
+    DATA --> MGMT
 
-## User Roles
-
-FieldOS is designed around multiple operational roles rather than a single universal interface.
-
-### Field Representatives
-
-Field representatives primarily interact with:
-
-- Assigned territories
-- Serviceable addresses
-- Interactive maps
-- Address dispositions
-- Customer information
-- Sales submissions
-- Available installation appointments
-- Follow-up opportunities
-
-The representative workflow is intentionally optimized for field use so that common actions can be completed without moving between multiple systems.
-
-### Operations
-
-Operations users work with the post-sale lifecycle, including:
-
-- Reviewing submitted sales
-- Monitoring installation outcomes
-- Managing reschedules and cancellations
-- Reviewing appointment availability
-- Preparing sales for invoicing
-- Tracking exceptions and follow-up requirements
-- Reviewing historical activity
-
-### Management
-
-Management interfaces focus on aggregated information such as:
-
-- Sales performance
-- Field activity
-- Close rates
-- Installation outcomes
-- Territory performance
-- Representative performance
-- Vendor performance
-- Operational capacity
-- Historical trends
-- Executive-level KPIs
-
-### Administrators
-
-Administrative functions provide controlled access to configuration and operational management tools such as:
-
-- Representative access
-- Territory assignments
-- Vendor relationships
-- Address imports
-- Data quality review
-- Reporting configuration
-- Audit information
-
----
-
-## Front-End Architecture
-
-The FieldOS front end is a browser-based application built primarily with TypeScript and JavaScript.
-
-The user interface is organized around operational workflows rather than individual database entities.
-
-For example, a representative does not need to understand how address events, sales records, territory assignments, or scheduling data are stored. The application combines the required information into a single workflow.
-
-### Main Interface Areas
-
-The front end includes interfaces for:
-
-- Authentication
-- Company and team dashboards
-- Interactive territory maps
-- Address detail views
-- Sales submission
-- Installation scheduling
-- Sales review
-- Operational reporting
-- Management reporting
-- Administrative functions
-
-### Design Approach
-
-The front-end architecture emphasizes:
-
-- Role-specific interfaces
-- Reduced navigation during field workflows
-- Immediate visibility into current address status
-- Clear separation between representative and administrative tools
-- Responsive views suitable for field use
-- Centralized presentation of operational information
-
----
-
-## Application Layer
-
-The application layer sits between the user interface and the underlying data services.
-
-Its responsibility is to translate user actions into controlled business operations.
-
-Examples include:
-
-- Recording an address disposition
-- Submitting a sale
-- Checking installation availability
-- Reserving an installation slot
-- Updating operational sale status
-- Retrieving territory-specific addresses
-- Building dashboard metrics
-- Generating reporting views
-- Triggering customer communications
-
-This layer prevents the user interface from directly controlling sensitive business operations.
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant W as Web Application
-    participant A as Application Logic
-    participant D as Database
-    participant X as External Service
-
-    U->>W: Perform action
-    W->>A: Submit validated request
-    A->>D: Read required state
-    D-->>A: Return current data
-    A->>A: Apply business rules
-    A->>D: Commit changes
-    A->>X: Trigger integration if required
-    A-->>W: Return result
-    W-->>U: Update interface
+    EXT[CRM / Work Orders / Warehouse] --> INT
+    INT --> VALIDATE[Lifecycle Validation]
+    VALIDATE --> REVIEW
 ```
 
 ---
 
-## Data Architecture
+# 3. Runtime Boundaries
 
-PostgreSQL serves as the primary operational data store.
+## Browser / PWA
 
-The database is structured around several major business domains.
+The field application handles:
 
-### Territory Domain
+- representative identification and assignment loading,
+- map rendering,
+- address interaction,
+- disposition capture,
+- pricing display,
+- partial-sale local autosave,
+- installation availability display,
+- sale submission orchestration,
+- Realtime subscriptions,
+- offline queueing,
+- update/version coordination.
 
-Stores information required to organize field activity geographically.
+The browser is **not** a trusted place for service-role credentials, SMTP passwords, webhook secrets, or privileged integration keys.
 
-Conceptually this includes:
+## PostgreSQL / Supabase
 
-- Territories
-- Territory boundaries
-- Territory assignments
-- Team or vendor relationships
-- Territory configuration
+PostgreSQL is the operational source of truth for shared state. Supabase provides managed access to PostgreSQL along with Realtime and authentication services used by protected operational surfaces.
 
-### Address Domain
+Database responsibilities include:
 
-Addresses form the center of the field workflow.
+- service-location records,
+- representative/territory relationships,
+- append-style activity history,
+- pricing configuration,
+- installation capacity,
+- bookings,
+- completed sales,
+- partial attempts,
+- review/financial records,
+- reporting views,
+- controlled RPC/transaction logic.
 
-Conceptually, an address can be associated with:
+## Vercel / Serverless Functions
 
-- Geographic coordinates
-- Territory membership
-- Serviceability information
-- Current field disposition
-- Historical activity
-- Notes
-- Sales activity
-- Follow-up status
-
-### Activity History
-
-FieldOS separates historical activity from the current state of an address.
-
-This allows the system to answer both:
-
-> What is the current status of this address?
-
-and:
-
-> What has happened at this address over time?
-
-Maintaining an event history supports:
-
-- Auditability
-- Rep activity reporting
-- Historical analysis
-- Follow-up workflows
-- Operational troubleshooting
-
-### Sales Domain
-
-Sales records connect the field interaction with downstream operations.
-
-Conceptually, a sale may include:
-
-- Address
-- Representative
-- Territory
-- Customer information
-- Selected service
-- Submission time
-- Installation information
-- Operational status
-- Invoice status
-- Cancellation or reschedule status
-
-### Scheduling Domain
-
-Scheduling data is kept separate from the sale itself so installation capacity can be managed as a shared operational resource.
-
-The scheduling domain handles concepts such as:
-
-- Territory
-- Service date
-- Appointment window
-- Capacity
-- Existing bookings
-- Remaining availability
-
-### User and Access Domain
-
-User-related data supports:
-
-- Authentication
-- Role assignment
-- Representative status
-- Team membership
-- Territory assignments
-- Administrative permissions
+Trusted server-side functions handle operations that must use privileged credentials or communicate with protected external services, such as transactional email or controlled integration endpoints.
 
 ---
 
-## Territory and Mapping Architecture
+# 4. Operational Surfaces
 
-Mapping is a core part of the representative workflow.
+FieldOS uses focused operational surfaces rather than one giant universal UI.
 
-Rather than presenting representatives with a flat address list, FieldOS displays serviceable locations geographically within assigned territories.
+### Representative field application
+
+Optimized for mobile execution:
+
+1. identify the active representative,
+2. load assigned territories,
+3. load service locations and boundaries,
+4. work from map/list,
+5. record a door outcome,
+6. capture customer information,
+7. select an approved offer,
+8. choose installation availability,
+9. submit the sale or finalize a non-sale outcome.
+
+### Team/company dashboards
+
+Summarize:
+
+- doors worked,
+- disposition mix,
+- submitted/installed sales,
+- close rate,
+- representative performance,
+- territory performance,
+- installation capacity,
+- recent activity,
+- follow-up opportunities.
+
+### Sales Review
+
+Provides a controlled queue for post-sale actions:
+
+- order/CRM entry tracking,
+- installation outcome,
+- cancellation/reschedule,
+- invoice readiness,
+- invoice/export state,
+- adjustment/clawback state,
+- lifecycle validation.
+
+### Administration / management
+
+Supports configuration, data quality, reporting, boundaries, people/territories, pricing, and management-level operational visibility.
+
+---
+
+# 5. Access Model
+
+FieldOS does not use one identical authentication pattern for every surface.
+
+## Representative access
+
+The representative-facing experience is optimized for field speed. The application matches an active representative identity and loads configured territory assignments. Browser database access is intentionally limited by client permissions and database policy.
+
+## Protected operational surfaces
+
+Administrative and management functionality uses authenticated sessions and authorization rules. UI visibility is not treated as a security boundary by itself; the data layer must enforce access as well.
+
+## Server-only privileges
+
+Privileged secrets and service-role capabilities remain in trusted server-side code.
+
+---
+
+# 6. Core Data Relationships
+
+The public model is intentionally conceptual:
 
 ```mermaid
 flowchart LR
-    A[Territory Assignment] --> B[Authorized User]
-    B --> C[Territory Map]
-    C --> D[Serviceable Addresses]
-    D --> E[Address Detail]
-    E --> F[Disposition]
-    E --> G[Sale]
-    E --> H[Follow-Up]
+    REP[Representative] --> ASSIGN[Territory Assignment]
+    ASSIGN --> LOC[Service Location]
+
+    LOC --> EVT[Activity Event]
+    LOC --> PARTIAL[Partial Attempt]
+    LOC --> SALE[Completed Sale]
+
+    OFFER[Approved Offer] --> SNAP[Offer Snapshot]
+    SNAP --> SALE
+
+    SLOT[Install Slot] --> BOOK[Booking]
+    BOOK --> SALE
+
+    SALE --> REVIEW[Review State]
+    REVIEW --> FIN[Invoice / Adjustment]
+    SALE --> LIFE[Lifecycle Validation]
 ```
 
-### Address Markers
-
-Map markers can represent operational information such as:
-
-- Untouched addresses
-- Previous contacts
-- Not-home results
-- Follow-up opportunities
-- Completed sales
-- Other field outcomes
-
-This gives representatives situational awareness without requiring them to open each individual address.
-
-### Territory Access
-
-Territory access is controlled by assignment.
-
-A representative's usable field data is determined by the territories available to that user rather than exposing the complete company address inventory.
-
-This supports both usability and access control.
+This separation prevents one record from being overloaded with unrelated responsibilities.
 
 ---
 
-## Address Event Model
+# 7. Transactional Sale Boundary
 
-One architectural decision in FieldOS is to preserve activity as a history instead of simply overwriting an address each time something happens.
-
-A simplified conceptual model looks like:
+A completed sale changes more than one shared record. Conceptually:
 
 ```text
-Address
-  |
-  +-- Current Status
-  |
-  +-- Activity Event
-  |     +-- Representative
-  |     +-- Event Type
-  |     +-- Timestamp
-  |     +-- Notes / Metadata
-  |
-  +-- Activity Event
-  |
-  +-- Sale
+submit_sale(...)
+  ├── validate representative / location / offer
+  ├── validate appointment capacity
+  ├── create completed sale
+  ├── reserve appointment
+  ├── create field activity event
+  ├── associate prior partial attempt when applicable
+  └── return authoritative capacity/result
 ```
 
-This approach provides several benefits:
+The client does not treat three independent successful requests as equivalent to one successful sale.
 
-- The current address state remains fast to retrieve
-- Historical activity remains available
-- Management can analyze field behavior over time
-- Disposition changes remain traceable
-- Troubleshooting does not depend on the latest value alone
+A client-generated submission identifier supports idempotent retry after ambiguous network failures.
 
 ---
 
-## Sales Workflow Architecture
+# 8. Installation Capacity
 
-The sales process begins from an address rather than from a standalone sales form.
+Capacity is a shared-resource concurrency problem.
 
-This helps maintain a relationship between:
+A browser can display a slot as open while another representative is simultaneously completing a booking. The database therefore validates capacity at transaction time.
 
-- Territory
-- Address
-- Representative
-- Customer interaction
-- Selected service
-- Installation appointment
-- Downstream operational status
+Realtime events make availability change quickly across clients, while polling/focus/reconnect refreshes provide a recovery path if a websocket event is missed.
 
-A simplified lifecycle is:
-
-```mermaid
-stateDiagram-v2
-    [*] --> AddressSelected
-    AddressSelected --> CustomerInformation
-    CustomerInformation --> PackageSelection
-    PackageSelection --> ScheduleSelection
-    ScheduleSelection --> Submitted
-    Submitted --> OperationsReview
-    OperationsReview --> Installed
-    OperationsReview --> Rescheduled
-    OperationsReview --> Cancelled
-    Installed --> InvoiceReady
-    InvoiceReady --> Invoiced
+```text
+Realtime event → Debounced refresh
+Polling timer  → Refresh if visible/online
+Window focus   → Reconcile
+Reconnect      → Reconcile
+Booking result → Reconcile authoritative slot
 ```
 
-The actual production workflow contains additional validation and operational states that are intentionally omitted from this public architecture document.
-
 ---
 
-## Installation Scheduling Architecture
+# 9. Pricing & Promotion Architecture
 
-Scheduling is one of the more important shared-state problems in FieldOS.
+Pricing is configuration-driven.
 
-Multiple representatives may be working simultaneously, while installation capacity is limited by:
+A normalized offer can conceptually contain:
 
-- Territory
-- Date
-- Appointment window
-- Operational capacity
-
-The platform therefore treats appointment capacity as a controlled shared resource.
-
-### Scheduling Flow
-
-```mermaid
-sequenceDiagram
-    participant R as Representative
-    participant F as FieldOS
-    participant S as Scheduling Logic
-    participant D as Database
-
-    R->>F: Open available appointments
-    F->>S: Request territory/date availability
-    S->>D: Read capacity and bookings
-    D-->>S: Return current state
-    S-->>F: Return remaining availability
-    F-->>R: Display available windows
-
-    R->>F: Submit selected appointment
-    F->>S: Validate requested slot
-    S->>D: Re-check current availability
-    D-->>S: Return latest state
-    S->>D: Save booking
-    S-->>F: Booking confirmed
-    F-->>R: Sale submitted
+```json
+{
+  "package_key": "gig",
+  "package_name": "Gig Internet",
+  "speed_label": "Example speed",
+  "promo_display": "$XX.XX/mo for 12 months",
+  "promo_term_label": "12 months",
+  "standard_rate_label": "$XX.XX/mo afterward",
+  "phases": [
+    { "month_start": 1, "month_end": 12, "internet_price": 49.99 },
+    { "month_start": 13, "month_end": null, "internet_price": 89.99 }
+  ],
+  "charges": [],
+  "disclosure": "Example sanitized disclosure"
+}
 ```
 
-### Why Capacity Is Re-Checked
+The public values above are placeholders; production pricing is not published here.
 
-Displaying an available appointment is not enough.
+### Selection
 
-Another representative may select the same window between the time availability is displayed and the time a sale is submitted.
+Offer selection can consider:
 
-For that reason, the system validates availability again during the submission process.
+- package,
+- territory,
+- team scope,
+- active date,
+- priority/order,
+- exact match vs. general fallback.
 
-This reduces the risk of:
+### Equipment phases
 
-- Overbooking
-- Stale availability
-- Conflicting appointments
-- Manual schedule correction
+Recurring equipment can have its own time phases, allowing a device to be included during a promotional term and billed later.
 
----
+### Immutable order snapshot
 
-## Sales Review and Operational Processing
+At sale time, FieldOS persists a normalized `offer_snapshot`. The representative UI, completed sale, and customer confirmation can therefore share the same historical pricing record.
 
-Once a representative submits a sale, responsibility transitions from the field workflow into the operational workflow.
-
-The review layer allows operations staff to manage sales without modifying database records manually.
-
-Common post-sale outcomes include:
-
-- Pending installation
-- Installed
-- Rescheduled
-- Cancelled
-- Ready for invoicing
-- Invoiced
-- Additional review required
-
-This provides a controlled operational lifecycle while keeping historical sales data intact.
+This avoids a common failure mode where a current promotion table is edited later and historical orders appear to change retroactively.
 
 ---
 
-## Reporting Architecture
+# 10. Partial Sale Capture
 
-FieldOS reporting is built on the same operational data created by normal application workflows.
+Partial capture solves a separate problem from completed sales.
 
-This avoids requiring teams to maintain separate manual reporting datasets for basic field activity.
+A representative may reach several stages of an interaction without completing an order. FieldOS can retain meaningful contact/progress data while keeping the attempt out of completed-sale metrics.
 
-Reporting can combine:
+Conceptual progress:
 
-- Address activity
-- Sales
-- Installations
-- Territories
-- Representatives
-- Vendors
-- Scheduling
-- Operational outcomes
+```text
+started
+  ↓
+customer_info
+  ↓
+contact_captured
+  ↓
+package_selected
+  ↓
+install_selected
+```
 
-### Reporting Layers
+An attempt can finish as:
 
-The application provides multiple reporting perspectives.
+- **abandoned** — the interaction ends without a sale,
+- **converted** — the attempt becomes a completed sale.
 
-#### Representative Level
-
-Examples:
-
-- Doors worked
-- Sales submitted
-- Close rates
-- Follow-up activity
-
-#### Territory Level
-
-Examples:
-
-- Field penetration
-- Sales volume
-- Address outcomes
-- Installation performance
-
-#### Team / Vendor Level
-
-Examples:
-
-- Team comparisons
-- Vendor performance
-- Sales outcomes
-- Productivity
-
-#### Executive Level
-
-Examples:
-
-- Overall sales
-- Installed sales
-- Field activity
-- Operational capacity
-- Performance trends
-- Follow-up opportunities
+The same client attempt identifier can be correlated to the final sale when converted.
 
 ---
 
-## Authentication and Authorization
+# 11. Offline & Realtime Resilience
 
-FieldOS uses authenticated access rather than exposing operational functionality publicly.
+## Offline queue
 
-Authorization is designed around the principle that a user should only receive the tools and operational data required for that user's role.
+Connectivity-related failures may be persisted in browser storage and replayed later. Queue entries retain identifiers, payload, creation time, attempts, and error state.
 
-Access decisions can depend on factors such as:
+Tasks are replayed sequentially so state transitions remain easier to reason about after reconnect.
 
-- User role
-- Team
-- Representative identity
-- Territory assignment
-- Administrative permission
+## Error classification
 
-### Role Separation
+Not every failed request is an offline problem.
 
-A field representative does not require the same access as an administrator.
+Connectivity failures can be retried. Permission, validation, schema, or business-rule failures should remain visible so the user does not receive a false “saved offline” success state.
 
-Likewise, reporting users may require broad aggregated visibility without needing access to operational modification tools.
+## Reconciliation
 
-Separating these concerns reduces unnecessary exposure and simplifies each interface.
+After reconnect or queue completion, the client re-reads database state. This is critical because the database, not local cache, is authoritative for shared state such as booking capacity.
 
 ---
 
-## API and Integration Layer
+# 12. Customer Confirmation Architecture
 
-FieldOS uses APIs to connect internal application workflows with external services.
+The sale confirmation is a server-side transactional workflow.
 
-Integration categories include:
+### Idempotency
 
-- Customer communications
-- Operational notifications
-- Reporting
-- Scheduling-related workflows
-- Data synchronization
-- Supporting business systems
+A confirmation record is reserved before SMTP delivery:
 
-The application is designed so external service failures do not require representatives to understand or interact directly with those integrations.
+```text
+pending → sending → sent
+                  ↘ failed
+pending → skipped
+```
 
-Where appropriate, integration status can be stored so operations staff can identify whether an automated action completed successfully.
+A duplicate webhook that cannot claim the `pending` state becomes a no-op.
+
+### Pricing integrity
+
+The email loads the persisted order and uses the `offer_snapshot` as the primary pricing source. It does not maintain a separate hard-coded version of the promotion.
+
+### Secrets
+
+SMTP credentials and privileged database access remain server-side.
 
 ---
 
-## Automated Customer Communications
+# 13. PWA Update Safety
 
-Certain sales events can trigger customer-facing communications.
+PWA caching introduces deployment consistency requirements.
 
-A simplified workflow is:
+A coordinated release aligns:
+
+- application build identifier,
+- required-build metadata,
+- JavaScript cache-busting reference,
+- service-worker registration version,
+- service-worker cache version.
+
+If those disagree during a partial deployment, the application can otherwise get stuck trying to reload into a build that is not fully available.
+
+FieldOS uses a reload guard and defers required updates when unsynced field work exists.
+
+> Preserving field work is more important than immediately activating a new front-end build.
+
+---
+
+# 14. Downstream Lifecycle Validation
+
+The same service location can later appear in external account, work-order, install, and disconnect data.
+
+FieldOS correlates these systems using an external location identifier rather than relying only on formatted addresses.
+
+Conceptual validation fields include:
+
+- FieldOS location identifier,
+- external location identifier,
+- FieldOS state,
+- expected state,
+- account/work-order state,
+- scheduled installation,
+- actual installation,
+- disconnect state,
+- source refresh timestamp,
+- validation result and detail.
+
+Possible outcomes include:
+
+- match,
+- mismatch,
+- external exception,
+- needs review,
+- no lifecycle yet.
+
+The current architecture is validation-first. Automatic write-back is intentionally a later phase because lifecycle state can affect invoicing and adjustments.
+
+---
+
+# 15. Financial / Clawback Separation
+
+A later adjustment is not the same business fact as the original sale.
+
+FieldOS preserves the original sale and stores downstream adjustment/clawback state separately. This maintains auditability of:
+
+- the original order,
+- original invoice state,
+- install outcome,
+- later disconnect,
+- reason,
+- credit requirement,
+- credit export/invoice state.
+
+---
+
+# 16. External Schedule Reconciliation
+
+External scheduling data is first handled through an audit/reconciliation layer rather than being allowed to immediately change live appointment capacity.
+
+The audit can classify what an external record **would** do:
+
+- book,
+- link to an existing booking,
+- update,
+- overbook,
+- fail location matching,
+- fail territory matching,
+- fail slot matching.
+
+This pattern lets the integration be measured before it receives mutation authority.
+
+---
+
+# 17. Security Boundaries
+
+The production system handles customer and operational data. The important architectural boundaries are:
+
+- public browser configuration is not treated as a secret,
+- database access must still be constrained by policy/grants,
+- service-role credentials remain server-only,
+- SMTP credentials remain server-only,
+- integration/webhook secrets remain server-only,
+- customer PII is excluded from this public repository,
+- administrative authorization is enforced beyond UI visibility.
+
+---
+
+# 18. Failure Modes Designed For
+
+The architecture explicitly accounts for:
+
+| Failure Mode | Design Response |
+|---|---|
+| Mobile loses connectivity | Persist eligible work locally and retry |
+| Database rejects a request | Show real error; do not call it offline success |
+| Duplicate sale retry | Idempotent client submission identifier |
+| Two reps choose same slot | Database capacity validation |
+| Realtime websocket misses event | Poll/focus/reconnect reconciliation |
+| Duplicate email webhook | Conditional `pending → sending` reservation |
+| Promotion is edited later | Historical `offer_snapshot` |
+| Partial interaction looks like a sale | Separate partial-attempt lifecycle |
+| PWA release deploys partially | Synchronized build markers + reload guard |
+| External lifecycle feed disagrees | Validation layer before write-back |
+
+---
+
+# 19. Future Architecture
+
+The most significant planned architectural evolution is controlled lifecycle write-back:
 
 ```mermaid
 flowchart LR
-    A[Sale Submitted] --> B[Application Validation]
-    B --> C[Sale Stored]
-    C --> D[Communication Trigger]
-    D --> E[External Email Service]
-    E --> F[Delivery Result]
-    F --> G[Status Recorded]
+    SALE[FieldOS Sale] --> CRM[CRM / Work Order]
+    CRM --> WH[Warehouse Lifecycle]
+    WH --> RULES[Validation Rules]
+    RULES --> WRITE[Controlled Write-Back]
+    WRITE --> STATE[FieldOS Lifecycle State]
+    STATE --> FIN[Invoice / Adjustment Logic]
 ```
 
-Keeping communication status associated with the operational workflow makes it possible to distinguish between:
-
-- A successful sale submission
-- A successful notification
-- A notification requiring follow-up
+The validation layer already creates the boundary required to introduce that automation safely.
 
 ---
 
-## Data Imports and Data Quality
+## Public Showcase Scope
 
-FieldOS also supports administrative data-loading workflows.
-
-Imported data may require:
-
-- Schema validation
-- Territory association
-- Address normalization
-- Duplicate detection
-- Geographic validation
-- Data quality review
-
-Import tooling is intentionally separated from normal field workflows so large administrative data changes are not performed through representative-facing interfaces.
-
----
-
-## Auditability
-
-Because FieldOS changes operational data used by multiple groups, traceability is an important architectural concern.
-
-The platform preserves historical information for key activities so that operational questions can be investigated after the fact.
-
-Examples include:
-
-- Address activity history
-- Status changes
-- Administrative actions
-- Sales lifecycle changes
-- User-associated activity
-
-This is particularly useful when reconciling field activity with sales, installations, or reporting.
-
----
-
-## Deployment Architecture
-
-The web application is deployed using Vercel.
-
-Supabase provides managed PostgreSQL and supporting application services.
-
-A simplified deployment model is:
-
-```mermaid
-flowchart TD
-    A[Source Repository] --> B[Build / Deployment Pipeline]
-    B --> C[Vercel]
-    C --> D[FieldOS Web Application]
-
-    D --> E[Supabase Services]
-    E --> F[(PostgreSQL)]
-
-    D --> G[External APIs]
-    D --> H[Notification Services]
-```
-
-The production source repository remains private.
-
-Environment-specific configuration and secrets are stored outside the public showcase repository.
-
----
-
-## Environment Configuration
-
-Production systems require information that should never be committed to a public repository.
-
-Examples include:
-
-- Database credentials
-- API keys
-- Service tokens
-- Private URLs
-- Authentication secrets
-- Environment-specific configuration
-
-These values are managed through deployment environment configuration rather than being embedded directly in public source or documentation.
-
----
-
-## Security and Privacy
-
-FieldOS handles operational and customer-related information, so the architecture is designed with data exposure in mind.
-
-Public portfolio materials intentionally exclude:
-
-- Customer names
-- Customer addresses
-- Phone numbers
-- Email addresses
-- Account information
-- Internal pricing rules
-- Credentials
-- API keys
-- Internal service endpoints
-- Proprietary company logic
-- Production database schemas
-
-Screenshots used in the public showcase have sensitive information removed or obscured.
-
----
-
-## Reliability Considerations
-
-Several parts of the application depend on shared or changing data.
-
-Examples include:
-
-- Installation availability
-- Representative territory access
-- Sale status
-- Operational reporting
-- External notifications
-
-The architecture therefore favors validation against current server-side state rather than relying only on information previously loaded in the browser.
-
-This is especially important for scheduling and sales submission, where stale client-side information could otherwise cause conflicting operational records.
-
----
-
-## Architectural Principles
-
-Several principles guide the design of FieldOS.
-
-### 1. Build Around Workflows
-
-The interface is organized around what users need to accomplish rather than mirroring database tables.
-
-### 2. Maintain One Operational Source of Truth
-
-Field activity, sales, scheduling, and reporting are connected through shared operational data rather than maintained as unrelated spreadsheets.
-
-### 3. Preserve History
-
-Important activity is retained so the platform can answer both current-state and historical questions.
-
-### 4. Validate Shared Resources Server-Side
-
-Resources such as appointment capacity are validated when an action is committed, not only when information is initially displayed.
-
-### 5. Separate User Responsibilities
-
-Representatives, operations, management, and administrators receive different interfaces and levels of access.
-
-### 6. Keep Integrations Behind the Application Layer
-
-Users interact with FieldOS rather than needing direct access to every external service.
-
-### 7. Keep Sensitive Implementation Details Private
-
-The public architecture explains the design and engineering approach without exposing production credentials, schemas, endpoints, or proprietary business rules.
-
----
-
-## Example End-to-End Workflow
-
-A representative sale demonstrates how several architecture components work together.
-
-```mermaid
-flowchart TD
-    A[Representative Signs In] --> B[Assigned Territory Loaded]
-    B --> C[Interactive Address Map]
-    C --> D[Address Selected]
-    D --> E[Previous Activity Retrieved]
-    E --> F[Customer Interaction Recorded]
-    F --> G{Sale?}
-
-    G -- No --> H[Disposition Saved]
-    H --> I[Activity History Updated]
-
-    G -- Yes --> J[Customer Information Entered]
-    J --> K[Available Package Selected]
-    K --> L[Installation Availability Requested]
-    L --> M[Appointment Selected]
-    M --> N[Availability Re-Validated]
-    N --> O[Sale Submitted]
-    O --> P[Activity History Updated]
-    O --> Q[Operations Workflow]
-    O --> R[Customer Communication]
-    Q --> S[Installation Outcome]
-    S --> T[Reporting & Analytics]
-```
-
-This workflow demonstrates how the platform connects field activity, scheduling, sales processing, customer communication, operations, and reporting without requiring the representative to work across separate systems.
-
----
-
-## Public Documentation Scope
-
-This architecture document is intentionally conceptual.
-
-The public showcase is intended to demonstrate:
-
-- System design
-- Technical decision-making
-- Workflow architecture
-- Data modeling concepts
-- Operational problem solving
-- Application architecture
-- Integration strategy
-
-It intentionally does **not** provide enough detail to recreate or access the production system.
-
-Production source code, database schemas, security policies, credentials, endpoints, deployment configuration, and proprietary business rules remain private.
+This document is intended to demonstrate system design decisions. It is deliberately not an operations manual for the private production environment.
