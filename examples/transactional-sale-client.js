@@ -3,34 +3,18 @@
  *
  * Simplified public example based on the FieldOS production workflow.
  *
- * The important design decision is that a sale is submitted as ONE
- * database transaction. The client does not independently create an order,
- * installation booking, and activity event.
- *
- * Production schemas, pricing rules, company names, and exact RPC names
- * have been removed.
+ * The client sends one logical transaction payload instead of independently
+ * creating a sale, appointment booking, and field activity event.
  */
 
 function newClientSubmissionId() {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID();
-  }
-
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
-    const random = Math.random() * 16 | 0;
-    const value = char === 'x' ? random : ((random & 0x3) | 0x8);
-    return value.toString(16);
-  });
+  return globalThis.crypto?.randomUUID?.() ||
+    `sale_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
 function isConnectivityError(error) {
   const message = String(
-    error?.message ||
-    error?.details ||
-    error?.hint ||
-    error?.code ||
-    error ||
-    ''
+    error?.message || error?.details || error?.hint || error || ''
   ).toLowerCase();
 
   return (
@@ -43,151 +27,110 @@ function isConnectivityError(error) {
 }
 
 function normalizeRpcResult(data) {
-  let value = data;
+  if (Array.isArray(data)) return data[0] || {};
 
-  if (Array.isArray(value)) {
-    value = value[0] ?? null;
-  }
-
-  if (typeof value === 'string') {
+  if (typeof data === 'string') {
     try {
-      value = JSON.parse(value);
+      return JSON.parse(data);
     } catch {
-      // Leave the original string in place.
+      return {};
     }
   }
 
-  return value && typeof value === 'object' ? value : {};
+  return data && typeof data === 'object' ? data : {};
 }
 
 function requireCompleteTransaction(result) {
-  const missing = [];
+  const required = ['sale_id', 'booking_id', 'activity_event_id'];
+  const missing = required.filter((key) => !result[key]);
 
-  if (result.ok !== true) missing.push('ok');
-  if (!result.order_id) missing.push('order_id');
-  if (!result.appointment_id) missing.push('appointment_id');
-  if (!result.activity_event_id) missing.push('activity_event_id');
-
-  if (missing.length) {
-    throw new Error(
-      `Incomplete transaction confirmation: ${missing.join(', ')}`
-    );
+  if (result.ok !== true || missing.length) {
+    throw new Error(`Incomplete transaction: ${missing.join(', ') || 'ok=false'}`);
   }
 
   return result;
 }
 
-async function callSaleTransaction(supabase, payload) {
-  const { data, error } = await supabase.rpc('submit_sale_transaction', {
-    p_payload: payload,
-  });
-
-  if (error) throw error;
-
-  return requireCompleteTransaction(normalizeRpcResult(data));
-}
-
-/**
- * queueOfflineRpc is injected so the example does not depend on the
- * implementation in offline-sync-queue.js.
- */
 export async function submitSale({
   supabase,
-  sale,
-  selectedAddress,
+  customer,
+  representative,
+  selectedLocation,
   selectedSlot,
+  offerSnapshot,
   queueOfflineRpc,
   refreshSchedule,
 }) {
-  if (!selectedAddress?.id) {
-    throw new Error('An address must be selected.');
-  }
+  if (!selectedLocation?.id) throw new Error('Select a service location.');
+  if (!selectedSlot?.id) throw new Error('Select an installation slot.');
+  if (!offerSnapshot?.offer_id) throw new Error('Select an approved offer.');
 
-  if (!selectedSlot?.id) {
-    throw new Error('An installation slot must be selected.');
-  }
+  const clientSubmissionId = newClientSubmissionId();
 
-  const submissionId = newClientSubmissionId();
-
-  const transactionPayload = {
-    client_submission_id: submissionId,
-    address_id: selectedAddress.id,
-    installation_slot_id: selectedSlot.id,
-
-    representative_id: sale.representativeId,
-    territory: selectedAddress.territory,
+  const payload = {
+    client_submission_id: clientSubmissionId,
+    location_id: selectedLocation.id,
+    external_location_id: selectedLocation.externalLocationId || null,
+    appointment_slot_id: selectedSlot.id,
+    representative_id: representative.id,
 
     customer: {
-      name: sale.customerName,
-      phone: sale.phone,
-      email: sale.email || null,
+      first_name: customer.firstName,
+      last_name: customer.lastName,
+      phone: customer.phone,
+      email: customer.email || null,
     },
 
-    package: {
-      key: sale.packageKey,
-      display_name: sale.packageName,
-      offer_id: sale.offerId || null,
-    },
-
-    notes: sale.notes || null,
+    offer_snapshot: offerSnapshot,
 
     outcome: {
-      decision_maker_spoken_to: true,
-      follow_up_needed: Boolean(sale.followUpNeeded),
       sale_made: true,
+      follow_up_needed: Boolean(customer.followUpNeeded),
     },
   };
+
+  async function execute() {
+    const { data, error } = await supabase.rpc('submit_sale_transaction', {
+      p_payload: payload,
+    });
+
+    if (error) throw error;
+    return requireCompleteTransaction(normalizeRpcResult(data));
+  }
 
   if (navigator.onLine === false) {
     queueOfflineRpc({
       rpc: 'submit_sale_transaction',
-      payload: transactionPayload,
-      label: `Sale: ${sale.customerName}`,
+      payload,
+      label: 'Completed sale',
     });
 
-    return {
-      queued: true,
-      clientSubmissionId: submissionId,
-    };
+    return { queued: true, clientSubmissionId };
   }
 
   try {
-    const result = await callSaleTransaction(
-      supabase,
-      transactionPayload
-    );
+    const result = await execute();
 
-    // The transaction response contains authoritative booking/capacity data.
     await refreshSchedule?.({
       slotId: selectedSlot.id,
       bookedAfter: result.booked_after,
       capacity: result.capacity,
     });
 
-    return {
-      queued: false,
-      clientSubmissionId: submissionId,
-      ...result,
-    };
+    return { queued: false, clientSubmissionId, ...result };
   } catch (error) {
     if (!isConnectivityError(error)) {
-      // Validation/capacity failures should be shown to the user and the
-      // schedule should be refreshed before another attempt.
       await refreshSchedule?.({ force: true });
       throw error;
     }
 
-    // Reuse the SAME payload and submission ID later.
-    // The server-side transaction uses the submission ID for idempotency.
+    // Reuse the exact payload/idempotency key after reconnect.
     queueOfflineRpc({
       rpc: 'submit_sale_transaction',
-      payload: transactionPayload,
-      label: `Sale: ${sale.customerName}`,
+      payload,
+      label: 'Completed sale',
     });
 
-    return {
-      queued: true,
-      clientSubmissionId: submissionId,
-    };
+    return { queued: true, clientSubmissionId };
   }
 }
