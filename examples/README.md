@@ -2,127 +2,157 @@
 
 This folder contains simplified, sanitized examples based on implementation patterns used in the private FieldOS production application.
 
-The goal is to show how I approached several of the more technical parts of the platform without publishing production source code or exposing internal business logic, customer information, credentials, pricing rules, territory data, vendor configuration, or production infrastructure.
-
-These are representative examples rather than copies of the production codebase.
+These examples are **not copies of production source code**. Names, schemas, values, endpoints, credentials, company-specific rules, and pricing have been changed or omitted. The purpose is to demonstrate the engineering decisions behind the system.
 
 ---
 
-## Included Examples
+## [`transactional-sale-client.js`](transactional-sale-client.js)
 
-### [`transactional-sale-client.js`](transactional-sale-client.js)
+Shows a client-side sale submission that treats the order, installation reservation, and activity event as one logical transaction.
 
-Demonstrates the client-side sale submission workflow.
+**Concepts:**
 
-Instead of creating an order, installation booking, and activity record through separate client-side inserts, the application sends one payload to a database transaction and treats the response as the authoritative result.
-
-**Demonstrates:**
-
-- Transactional sale submission
-- Supabase RPC calls
-- Client-generated submission IDs
-- Idempotent retries
-- Transaction-result validation
-- Database-backed schedule reconciliation
-- Connectivity-aware submission handling
-- Safe retry behavior
+- client-generated idempotency key,
+- RPC/transaction boundary,
+- authoritative transaction result,
+- connectivity-aware retry,
+- schedule reconciliation,
+- saved pricing snapshot.
 
 ---
 
-### [`offline-sync-queue.js`](offline-sync-queue.js)
+## [`offline-sync-queue.js`](offline-sync-queue.js)
 
-Demonstrates how FieldOS handles work performed in areas with unreliable cellular connectivity.
+Shows browser-local preservation and replay of field work during connectivity loss.
 
-When a database operation cannot be completed, the task can be stored locally and replayed when connectivity returns instead of forcing the representative to repeat the work.
+**Concepts:**
 
-**Demonstrates:**
-
-- Offline-first workflow design
-- Browser local storage
-- Sequential task replay
-- Retry tracking
-- RPC synchronization
-- Connectivity detection
-- Failure preservation
+- local queue persistence,
+- connectivity classification,
+- sequential replay,
+- retry metadata,
+- post-sync reconciliation,
+- distinction between network and database errors.
 
 ---
 
-### [`realtime-schedule-sync.js`](realtime-schedule-sync.js)
+## [`realtime-schedule-sync.js`](realtime-schedule-sync.js)
 
-Demonstrates how installation availability is kept synchronized across field devices.
+Shows Realtime as the primary notification path with polling/focus/reconnect recovery.
 
-Supabase Realtime provides the primary update path, while a lightweight polling process acts as a fallback for missed WebSocket events, sleeping mobile browsers, or unstable network connections.
+**Concepts:**
 
-**Demonstrates:**
-
-- Supabase Realtime subscriptions
-- PostgreSQL change events
-- Debounced refreshes
-- Polling fallback
-- Browser visibility checks
-- Online/offline state handling
-- Serialized refreshes
-- Database reconciliation
+- Supabase Realtime,
+- debounced refresh,
+- serialized reconciliation,
+- polling fallback,
+- mobile visibility handling.
 
 ---
 
-### [`sale-confirmation-webhook.js`](sale-confirmation-webhook.js)
+## [`pricing-offer-snapshot.js`](pricing-offer-snapshot.js)
 
-Demonstrates the server-side pattern used for transactional customer notifications after a successful order.
+Shows how one normalized offer can drive the representative price breakdown, persisted historical snapshot, and customer confirmation.
 
-The workflow reserves the notification state before contacting the mail server so duplicate webhook deliveries cannot send the same confirmation more than once.
+**Concepts:**
 
-**Demonstrates:**
-
-- Serverless API handlers
-- Database webhooks
-- Webhook-secret validation
-- Environment-based configuration
-- Conditional database updates
-- Duplicate-send prevention
-- SMTP delivery
-- Delivery-state tracking
-- Failure handling
+- phased pricing,
+- phased recurring/equipment charges,
+- display/calculation consistency,
+- immutable order snapshot,
+- historical pricing integrity.
 
 ---
 
-### [`schedule-reconciliation-audit.sql`](schedule-reconciliation-audit.sql)
+## [`partial-sale-capture.js`](partial-sale-capture.js)
 
-Demonstrates a PostgreSQL design for reconciling scheduling information from an external source without allowing the integration to immediately modify live installation capacity.
+Shows how incomplete customer interactions can be autosaved and later abandoned or converted without inflating completed-sale metrics.
 
-The audit layer records what the external data would change so it can be reviewed and validated before affecting production scheduling.
+**Concepts:**
 
-**Demonstrates:**
+- local draft state,
+- debounced persistence,
+- progress stages,
+- separate partial-attempt model,
+- conversion correlation.
 
-- PostgreSQL schema design
-- Unique source identifiers
-- Controlled workflow states
-- Capacity snapshots
-- JSONB source payloads
-- Constraints
-- Indexing
-- Row Level Security
-- Service-role permissions
-- Audit-first integration design
+---
+
+## [`sale-confirmation-webhook.js`](sale-confirmation-webhook.js)
+
+Shows an idempotent server-side customer confirmation workflow.
+
+**Concepts:**
+
+- webhook-secret validation,
+- conditional delivery reservation,
+- duplicate-send prevention,
+- persisted order reload,
+- `offer_snapshot` pricing source,
+- SMTP delivery-state tracking.
+
+---
+
+## [`pwa-update-coordinator.js`](pwa-update-coordinator.js)
+
+Shows how a field PWA can coordinate a required build without destroying unsynced work or entering an infinite reload loop.
+
+**Concepts:**
+
+- required-build marker,
+- pending-work deferral,
+- session reload guard,
+- partial-deployment recovery,
+- version convergence.
+
+---
+
+## [`lifecycle-validation.sql`](lifecycle-validation.sql)
+
+Shows a validation-first view that compares operational sale state to a downstream lifecycle feed without immediately granting that feed mutation authority.
+
+**Concepts:**
+
+- stable external location ID,
+- expected vs. observed state,
+- match/mismatch classification,
+- downstream exception handling,
+- controlled automation boundary.
+
+---
+
+## [`schedule-reconciliation-audit.sql`](schedule-reconciliation-audit.sql)
+
+Shows an audit-only integration pattern for an external scheduling source.
+
+**Concepts:**
+
+- proposed-action classification,
+- capacity snapshots,
+- source payload retention,
+- match/ambiguity states,
+- RLS/service-role boundary,
+- audit before mutation.
 
 ---
 
 ## Architecture Represented
 
-The examples cover several connected parts of the FieldOS workflow.
+```mermaid
+flowchart TD
+    REP[Field Representative] --> APP[Browser / PWA]
+    APP --> TX[Transactional Sale]
+    APP <--> OFFLINE[Offline Queue]
+    APP <--> RT[Realtime + Reconciliation]
+    APP --> PARTIAL[Partial Attempt]
+    APP --> PRICE[Normalized Offer]
 
-```text
-Field Representative
-        ↓
-Browser Application
-        ↓
-Transactional Sale RPC
-        ↓
-PostgreSQL
-   ┌────┼─────────┐
-   ↓    ↓         ↓
-Order  Booking  Activity Event
-        ↓
-Realtime Schedule Updates
-        ↓
-Other Field Devices
+    PRICE --> SNAP[Offer Snapshot]
+    SNAP --> TX
+
+    TX --> DB[(PostgreSQL)]
+    DB --> EMAIL[Idempotent Confirmation]
+    DB --> LIFE[Lifecycle Validation]
+
+    UPDATE[Required Build] --> APP
+```
