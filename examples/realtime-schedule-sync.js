@@ -1,11 +1,8 @@
 /**
  * Realtime Schedule Synchronization
  *
- * Simplified public example based on FieldOS installation scheduling.
- *
- * Supabase Realtime is the primary update path. A small polling loop is
- * intentionally kept as a reliability fallback for weak cellular service,
- * sleeping mobile browsers, or missed websocket events.
+ * Realtime provides fast change notifications; polling and focus/reconnect
+ * reconciliation make the mobile UI converge after missed events.
  */
 
 export function createScheduleSync({
@@ -14,10 +11,9 @@ export function createScheduleSync({
   renderSchedule,
   pollIntervalMs = 10000,
 }) {
-  let channel = null;
-  let pollTimer = null;
-  let debounceTimer = null;
-
+  let channel;
+  let pollTimer;
+  let debounceTimer;
   let refreshRunning = false;
   let refreshPending = false;
 
@@ -30,8 +26,7 @@ export function createScheduleSync({
     refreshRunning = true;
 
     try {
-      const schedule = await fetchSchedule();
-      renderSchedule(schedule);
+      renderSchedule(await fetchSchedule());
     } finally {
       refreshRunning = false;
 
@@ -42,131 +37,63 @@ export function createScheduleSync({
     }
   }
 
-  function queueRefresh(delayMs = 250) {
+  function queueRefresh(delayMs = 200) {
     clearTimeout(debounceTimer);
-
-    debounceTimer = setTimeout(() => {
-      debounceTimer = null;
-      refresh().catch(console.error);
-    }, delayMs);
-  }
-
-  function startPoll() {
-    clearInterval(pollTimer);
-
-    pollTimer = setInterval(() => {
-      if (
-        document.visibilityState === 'visible' &&
-        navigator.onLine !== false
-      ) {
-        queueRefresh(0);
-      }
-    }, pollIntervalMs);
+    debounceTimer = setTimeout(() => refresh().catch(console.error), delayMs);
   }
 
   function start() {
     stop();
-    startPoll();
 
-    if (!supabase || navigator.onLine === false) {
-      return;
-    }
+    pollTimer = setInterval(() => {
+      if (document.visibilityState === 'visible' && navigator.onLine !== false) {
+        queueRefresh(0);
+      }
+    }, pollIntervalMs);
+
+    if (!supabase || navigator.onLine === false) return;
 
     channel = supabase
-      .channel(`schedule-sync-${Math.random().toString(36).slice(2)}`)
-
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'installation_slots',
-        },
-        () => queueRefresh(100)
-      )
-
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'installation_bookings',
-        },
-        () => queueRefresh(100)
-      )
-
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-        },
-        () => queueRefresh(100)
-      )
-
+      .channel(`public-schedule-sync-${Math.random().toString(36).slice(2)}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'installation_slots',
+      }, () => queueRefresh(100))
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'installation_bookings',
+      }, () => queueRefresh(100))
       .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          queueRefresh(0);
-        }
-
-        if (
-          status === 'CHANNEL_ERROR' ||
-          status === 'TIMED_OUT' ||
-          status === 'CLOSED'
-        ) {
-          // Polling is already running and becomes the fallback path.
-          console.warn(
-            'Realtime schedule channel unavailable; polling remains active.'
-          );
+        if (status === 'SUBSCRIBED') queueRefresh(0);
+        if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) {
+          console.warn('Realtime unavailable; polling remains active.');
         }
       });
   }
 
   function stop() {
-    clearTimeout(debounceTimer);
     clearInterval(pollTimer);
-
-    debounceTimer = null;
-    pollTimer = null;
+    clearTimeout(debounceTimer);
 
     if (channel) {
-      try {
-        supabase.removeChannel(channel);
-      } catch {
-        // Cleanup should not block the application.
-      }
+      supabase.removeChannel(channel);
+      channel = null;
     }
-
-    channel = null;
   }
 
-  const handleOnline = () => {
+  const onFocus = () => navigator.onLine !== false && queueRefresh(0);
+  const onOnline = () => {
     start();
+    queueRefresh(0);
   };
 
-  const handleVisibility = () => {
-    if (
-      document.visibilityState === 'visible' &&
-      navigator.onLine !== false
-    ) {
-      queueRefresh(0);
-    }
-  };
+  window.addEventListener('focus', onFocus);
+  window.addEventListener('online', onOnline);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') queueRefresh(0);
+  });
 
-  window.addEventListener('online', handleOnline);
-  document.addEventListener('visibilitychange', handleVisibility);
-
-  return {
-    start,
-    stop() {
-      stop();
-      window.removeEventListener('online', handleOnline);
-      document.removeEventListener(
-        'visibilitychange',
-        handleVisibility
-      );
-    },
-    refresh: queueRefresh,
-  };
+  return { start, stop, refresh };
 }
