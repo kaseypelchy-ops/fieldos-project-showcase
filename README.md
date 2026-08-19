@@ -1,157 +1,216 @@
-# Field Sales Operations Platform
+# FieldOS
 
-A field-sales operations platform I designed and built to bring territory management, address-level canvassing, sales, installation scheduling, invoicing, reporting, and management oversight into one system.
+## Field Sales Operations & Intelligence Platform
 
-FieldOS was created for real field and operational use. It supports representatives working from mobile devices while also giving operations and management a centralized view of sales activity, installation capacity, territory performance, and field activity.
+**FieldOS** is a production field-sales operating system I designed and built to connect serviceable address data, door-to-door activity, territory execution, dynamic pricing, installation scheduling, post-sale operations, invoicing, and management intelligence in one address-centered workflow.
 
-> The production application and source repository are maintained privately because they contain proprietary business logic, internal infrastructure, customer and operational data, pricing rules, integrations, and company-specific workflows.
+The system was created for real field use. Representatives work from mobile devices in areas where connectivity may be unreliable, while operations and management need a trustworthy view of what happened at each service location after the representative leaves the door.
+
+> **Public showcase notice**  
+> The production application and source repository are private because they contain proprietary business logic, customer and operational data, production infrastructure, pricing configuration, credentials, vendor information, and internal integrations. This repository is a sanitized portfolio representation of the system architecture and engineering patterns.
 
 ---
 
 ## Project Context
 
-**Development began:** February 2026  
-**Status:** Production system under ongoing development  
-**Public showcase:** August 2026
+| Item | Detail |
+|---|---|
+| Development began | February 2026 |
+| Current state | Production system under ongoing development |
+| Public showcase | August 2026 |
+| Primary use case | Broadband field sales and post-sale operations |
+| Front end | HTML, CSS, vanilla JavaScript |
+| Operational data layer | PostgreSQL / Supabase |
+| Realtime | Supabase Realtime with reconciliation fallback |
+| Production runtime | Vercel |
+| Mapping | Leaflet / geospatial service-location data |
+| Reporting | Operational dashboards and Chart.js visualizations |
+| Email | Server-side SMTP through a Vercel function |
+| Mobile resilience | PWA caching, browser storage, offline queue, safe update coordination |
 
-This repository is a sanitized portfolio representation of a privately maintained production system. The public commit history reflects the creation and maintenance of this showcase, not the full development history of the production application.
+The public commit history reflects the showcase repository, not the full history of the private production system.
 
 ---
 
-## Overview
+## Why I Built It
 
-The project started with a fragmented field-sales process.
+The original field-sales process crossed several disconnected operational areas:
 
-Representatives needed a practical way to work assigned addresses, record outcomes, submit sales, and schedule installations while in the field. Operations needed visibility into those sales after submission. Management needed reporting across representatives, territories, vendors, installations, and overall field performance.
+- serviceable addresses,
+- territory assignments,
+- field canvassing,
+- customer dispositions,
+- sales capture,
+- promotion rules,
+- installation capacity,
+- post-sale review,
+- invoicing,
+- disconnect/clawback handling,
+- vendor reporting,
+- management reporting,
+- downstream CRM/work-order data.
 
-Instead of continuing to connect those processes manually, I built FieldOS as a centralized operating platform.
+A field representative needed a fast way to answer **“Which addresses should I work and what can I sell here?”** Operations needed to answer **“Which sales need action?”** Management needed to answer **“What is actually happening by territory, team, representative, and lifecycle state?”**
 
-At a high level:
+FieldOS turns those questions into one connected workflow instead of requiring people to reconcile multiple spreadsheets, maps, emails, and database exports manually.
+
+---
+
+## End-to-End Workflow
 
 ```text
-Serviceable Address Data
+Serviceable Location
         ↓
-Territory Assignment
+Territory / Representative Assignment
         ↓
-Representative Field Map
+Field Map & Address History
         ↓
-Address Activity / Disposition
+Door Interaction / Disposition
         ↓
-Sale Submission
+Customer Information & Approved Offer
         ↓
-Installation Scheduling
+Installation Capacity Check
         ↓
-Operations Review
+Transactional Sale Submission
         ↓
-Installation Outcome / Invoicing
+Saved Pricing Snapshot
         ↓
-Management Reporting & Analytics
+Customer Confirmation
+        ↓
+Sales Review / Installation Outcome
+        ↓
+Invoice / Adjustment / Clawback Workflow
+        ↓
+Lifecycle Validation & Management Reporting
 ```
 
-The application connects the field workflow with the operational processes that happen after the representative leaves the door.
+The **service address and external location identifier** are the operational anchors. Field activity, sales, scheduling, review, and downstream lifecycle matching remain traceable to the same service location wherever possible.
 
 ---
 
-## What the Platform Handles
-
-FieldOS includes workflows for:
-
-- Address-level canvassing
-- Interactive territory mapping
-- Territory assignments
-- Door disposition tracking
-- Sales submission
-- Installation scheduling
-- Installation-capacity management
-- Representative management
-- Vendor and team management
-- Follow-up tracking
-- Sales review
-- Installation outcome tracking
-- Rescheduling and cancellation workflows
-- Invoicing workflows
-- Historical activity tracking
-- Automated customer communications
-- Operational reporting
-- Management analytics
-- Data-quality controls
-- Role-based administrative access
-
----
-
-## Technology
-
-The platform includes work across:
-
-- TypeScript
-- JavaScript
-- PostgreSQL
-- SQL / PL/pgSQL
-- Supabase
-- Vercel
-- REST APIs
-- Supabase Realtime
-- Serverless API handlers
-- HTML / CSS
-- Browser storage and offline synchronization
-- Geospatial and address-level data
-
----
-
-## Core Architecture
+# Architecture
 
 ```mermaid
 flowchart TD
-    A[Field Representative] --> B[FieldOS Web Application]
-    C[Operations] --> B
-    D[Management] --> B
+    REP[Field Representative] --> PWA[FieldOS PWA]
 
-    B --> E[Application / Workflow Layer]
-    E --> F[Supabase API / RPC]
-    F --> G[(PostgreSQL)]
+    PWA --> PEOPLE[Representative & Territory Assignment]
+    PWA --> ADDR[Service Addresses]
+    PWA --> EVENTS[Field Activity Events]
+    PWA --> PRICING[Pricing & Promotion Engine]
+    PWA --> SCHEDULE[Installation Scheduling]
+    PWA --> SALES[Completed Sales]
 
-    G --> H[Addresses & Territories]
-    G --> I[Sales & Activity]
-    G --> J[Installation Scheduling]
-    G --> K[Reporting & Analytics]
+    PWA <--> REALTIME[Realtime Synchronization]
+    PWA <--> OFFLINE[Offline Queue / Local Drafts]
 
-    J --> L[Realtime Schedule Updates]
-    L --> B
+    PRICING --> SNAPSHOT[Offer Snapshot]
+    SNAPSHOT --> SALES
 
-    I --> M[Serverless Workflows]
-    M --> N[Customer Notifications]
+    SALES --> EMAIL[Serverless Customer Confirmation]
+    EMAIL --> CUSTOMER[Customer]
 
-    G --> O[Operational Review & Invoicing]
+    EVENTS --> DASH[Operational Dashboards]
+    SALES --> DASH
+    SCHEDULE --> DASH
+
+    SALES --> REVIEW[Sales Review]
+    REVIEW --> INVOICE[Invoicing / Adjustments / Clawbacks]
+
+    CRM[CRM / Warehouse Lifecycle Data] --> VALIDATE[Lifecycle Validation]
+    VALIDATE --> REVIEW
 ```
 
-The database acts as the authoritative source for operational state while the application provides separate workflows for representatives, operations staff, and management.
+### Architectural principles
+
+1. **The address is the operational anchor.** Every interaction should remain traceable to a service location.
+2. **Pricing is data-driven.** Approved offers are configuration, not scattered hard-coded text.
+3. **A sale preserves what the customer was quoted.** The submitted order stores an `offer_snapshot` so future pricing changes do not rewrite historical sales.
+4. **Installation capacity is shared state.** A slot is only truly available when the database confirms it.
+5. **Field work must survive weak connectivity.** Connectivity failures can be queued; validation and permission failures remain visible errors.
+6. **Completed sales are transactional.** Order, booking, and activity state are treated as one logical operation.
+7. **Realtime is an accelerator, not the sole source of truth.** Realtime events are paired with database reconciliation and polling fallback.
+8. **Partial opportunities are not completed sales.** Incomplete customer interactions are captured separately so reporting and invoicing remain accurate.
+9. **Customer communications use persisted order data.** Confirmation emails derive promotion details from the saved sale snapshot.
+10. **External lifecycle data is validated before it controls financial state.** CRM/warehouse feeds are compared first; automatic write-back is a later controlled phase.
+11. **Deployments must protect unsynced field work.** PWA updates are coordinated across build markers and deferred when local work is pending.
+
+For a deeper system-level description, see [`docs/architecture.md`](docs/architecture.md).
+
+---
+
+# What FieldOS Handles
+
+### Field execution
+
+- Representative launch and assignment lookup
+- Territory-based address loading
+- Interactive address-level mapping
+- Territory boundary visualization
+- Address dispositions and field-history tracking
+- Follow-up identification
+- Customer information capture
+- Partial-sale autosave
+- Package/promotion selection
+- Installation-slot selection
+- Sale submission
+- Offline work preservation
+
+### Operations
+
+- Submitted-sale review
+- Installation outcome tracking
+- Cancellation and reschedule handling
+- Invoice-ready identification
+- Invoice/export workflows
+- Adjustment and clawback workflows
+- Capacity monitoring
+- Data-quality review
+- Operational audit history
+
+### Management
+
+- Company-wide sales visibility
+- Team, territory, and representative performance
+- Door activity and close-rate analysis
+- Install completion reporting
+- Capacity utilization
+- Estimated revenue metrics
+- Follow-up opportunities
+- Historical campaign comparisons
+- Executive summaries
+
+### Platform administration
+
+- Representative management
+- Territory assignment
+- Territory activation/deactivation
+- Pricing/promotion administration
+- Map boundary management
+- Schedule capacity configuration
+- Dashboard access controls
+- Reporting configuration
+- Data-quality tooling
 
 ---
 
 # Platform Showcase
 
-The screenshots below highlight several parts of FieldOS, from the representative field workflow through operations and executive reporting.
-
-> Customer information and sensitive operational data have been removed or obscured for this public portfolio.
-
----
+The screenshots below are sanitized examples from the production system. Customer information and sensitive operational details have been removed or obscured.
 
 ## Company Sales Dashboard
 
-The Company Sales Dashboard provides a centralized view of field-sales activity across teams, territories, and representatives.
+The Company Sales Dashboard brings sales, field activity, installation state, follow-up opportunities, and representative performance into one operational view.
 
-Management can review sales performance, field activity, installation status, follow-up opportunities, and representative performance from one interface.
+**Highlights**
 
-**Highlights:**
-
-- Sales and field-activity tracking
-- Territory and representative filtering
-- Sales-status monitoring
-- Close-rate reporting
+- Company/team/territory filtering
+- Submitted and installed sales
+- Door activity and close rate
 - Installation availability
-- Recent activity
 - Representative performance
-- Route and field-activity review
+- Recent activity and status review
+- Route and field-activity visibility
 
 ![Company Sales Dashboard](images/01_company_sales_dashboard.png)
 
@@ -159,18 +218,16 @@ Management can review sales performance, field activity, installation status, fo
 
 ## Installation Schedule Availability
 
-The scheduling interface provides visibility into installation capacity by territory, date, and appointment window.
+Installation capacity is shared operational state. FieldOS shows availability by territory, date, and appointment window while reconciling capacity against existing bookings.
 
-Availability is reconciled against existing bookings so representatives can see which installation windows are still available while they are completing a sale.
+**Highlights**
 
-**Highlights:**
-
-- Territory-level installation capacity
-- Appointment-slot availability
-- Booked vs. available capacity
+- Territory-level capacity
+- Booked vs. available slots
 - Multi-day scheduling
-- Capacity utilization
-- Real-time schedule updates
+- Realtime refresh
+- Polling/reconciliation fallback
+- Database-confirmed booking results
 - Overbooking prevention
 
 ![Installation Schedule Availability](images/02_install_schedule_availability.png)
@@ -179,20 +236,18 @@ Availability is reconciled against existing bookings so representatives can see 
 
 ## Sales Review & Invoicing
 
-The Sales Review & Invoicing interface gives operations staff a dedicated workflow for managing submitted sales after the initial field interaction.
+Sales Review gives operations a controlled post-sale workflow instead of requiring direct database edits.
 
-Sales can move through installation, invoicing, cancellation, rescheduling, and adjustment workflows without requiring staff to work directly with the underlying database.
+**Highlights**
 
-**Highlights:**
-
-- Centralized sales-review queue
-- Installation-outcome tracking
-- Invoice-ready sales identification
-- Invoice export workflows
-- Cancellation tracking
-- Rescheduling
-- Adjustment and clawback workflows
-- Team and territory filtering
+- Centralized review queue
+- Order-entry tracking
+- Installation outcomes
+- Invoice-ready identification
+- Invoice/export workflow
+- Cancellation and rescheduling
+- Adjustment/clawback handling
+- Lifecycle validation visibility
 
 ![Sales Review and Invoicing](images/03_sales_review_invoicing.png)
 
@@ -200,20 +255,18 @@ Sales can move through installation, invoicing, cancellation, rescheduling, and 
 
 ## Executive Command Center
 
-The Executive Command Center provides leadership with a higher-level view of field-sales performance and operational health.
+The management view aggregates operational records into business-level reporting across sales, installations, field activity, capacity, and team performance.
 
-It combines sales, installations, field activity, capacity, follow-up opportunities, and team comparisons into one management reporting interface.
+**Highlights**
 
-**Highlights:**
-
-- Executive KPI reporting
+- Executive KPIs
 - Submitted vs. installed sales
-- Field activity and close-rate analysis
-- Team-performance comparisons
-- Installation-capacity monitoring
-- Follow-up opportunity identification
-- Trend visualization
-- Management summary reporting
+- Field activity and close rate
+- Team and territory comparisons
+- Installation capacity
+- Follow-up opportunity visibility
+- Trend analysis
+- Historical comparisons
 
 ![Executive Command Center](images/04_executive_command_center.png)
 
@@ -221,379 +274,378 @@ It combines sales, installations, field activity, capacity, follow-up opportunit
 
 ## Interactive Territory Map
 
-Field representatives work from an interactive map containing serviceable addresses within their assigned territories.
+Representatives work from an address-level map within their assigned territories. Markers reflect prior field activity and support direct entry into the current address workflow.
 
-Address-level markers give representatives visibility into previous activity, current status, follow-up opportunities, and sales history while they are working in the field.
+**Highlights**
 
-**Highlights:**
-
-- Address-level territory mapping
-- Territory-boundary visualization
-- Address-disposition tracking
-- Previous field-activity visibility
+- Service-location map
+- Territory boundaries
+- Address dispositions
+- Prior interaction visibility
 - Follow-up identification
-- Sales and customer-status indicators
-- Territory-based representative access
+- Sales/status indicators
+- Territory-scoped access
 
 ![Interactive Territory Map](images/06_territory_map.png)
 
 ---
 
-## Address & Sales Workflow
+## Representative Sale Workflow
 
-Representatives can open an address directly from the territory map and complete the sales workflow without leaving the field interface.
+The field-sale interface combines customer capture, approved package selection, pricing, installation scheduling, and outcome tracking in one mobile-oriented workflow.
 
-The system brings customer information, package selection, sales outcomes, and installation scheduling into one workflow.
+Pricing is loaded from the central offer configuration and preserved with the completed sale so the customer confirmation can reference the same offer the representative used.
 
-**Highlights:**
-
-- Address-specific sales workflow
-- Customer-information capture
-- Market-specific package availability
-- Sales-outcome tracking
-- Installation appointment selection
-- Real-time schedule availability
-- Direct sale submission from the field
-
-![Address and Sales Workflow](images/08_sales_form_example.png)
+![Representative Sale Workflow](images/08_sales_form_example.png)
 
 ---
 
 # Selected Engineering Challenges
 
-FieldOS needed to work in conditions that are different from a typical office-based web application.
+## 1. Transactional Sale Submission
 
-Representatives may be working from phones in areas with inconsistent cellular service, while multiple users can be viewing or changing installation availability at the same time.
-
-That led to several design decisions around reliability and data integrity.
-
----
-
-## Transactional Sale Submission
-
-A completed sale affects several related parts of the system.
-
-Conceptually:
+A completed sale affects multiple pieces of operational state:
 
 ```text
-Sale Submission
-      ↓
-Order
-      +
-Installation Booking
-      +
-Field Activity Event
+Customer Order
+     +
+Installation Reservation
+     +
+Address Activity Event
 ```
 
-Rather than allowing the browser to independently create each record, the application can send the complete workflow to a database transaction.
+Allowing the browser to create those independently creates partial-success failure modes: an order without an appointment, a booking without an order, or duplicate activity after a retry.
 
-This keeps related records consistent and allows the database to remain the authoritative source of the result.
+The production workflow therefore uses a controlled database transaction/RPC path. A client-generated submission identifier allows safe retry behavior, and the database response is treated as the authoritative result.
 
-A client-generated submission identifier also allows retries to be handled without unintentionally creating duplicate sales.
+See [`examples/transactional-sale-client.js`](examples/transactional-sale-client.js).
 
 ---
 
-## Offline Field Work
+## 2. Offline Field Operations & Reconciliation
 
-Field representatives cannot always depend on stable connectivity.
+Door-to-door work happens in weak cellular coverage. A connectivity interruption cannot be allowed to erase a representative's work or encourage duplicate submissions.
 
-When a database operation cannot be completed because the device has lost connectivity, the application can preserve the work locally instead of forcing the representative to start over.
+FieldOS distinguishes between:
+
+**Connectivity failures**
+
+- eligible for local queueing,
+- retried after reconnect,
+- visible as pending sync.
+
+**Validation / permission / schema failures**
+
+- surfaced as real errors,
+- not mislabeled as offline saves,
+- require correction rather than blind replay.
+
+Queued activity is replayed sequentially, then the app re-reads authoritative database state.
+
+See [`examples/offline-sync-queue.js`](examples/offline-sync-queue.js).
+
+---
+
+## 3. Shared Installation Capacity & Realtime Concurrency
+
+Two representatives can view the same appointment window at the same time. The browser's last-rendered slot count is therefore not enough to guarantee availability.
+
+FieldOS combines:
+
+- shared capacity records,
+- transactional booking validation,
+- Supabase Realtime change events,
+- debounced refreshes,
+- polling fallback,
+- focus/reconnect reconciliation.
+
+Realtime makes the UI responsive; the database remains authoritative.
+
+See [`examples/realtime-schedule-sync.js`](examples/realtime-schedule-sync.js).
+
+---
+
+## 4. Data-Driven Pricing & Immutable Offer Snapshots
+
+Promotions can vary by territory, team, package, active dates, and promotional phase. Equipment can also have its own phase schedule—for example, included during a promotion and billed afterward.
+
+Rather than duplicating promotion language across forms and emails, FieldOS loads an approved offer definition and normalizes it into one pricing model.
+
+When the sale is completed, the system saves a snapshot containing concepts such as:
+
+- package name,
+- speed,
+- promotion display,
+- promotion term,
+- standard rate,
+- internet phases,
+- recurring/equipment charges,
+- estimated promotional total,
+- first-bill estimate,
+- customer disclosure.
+
+That snapshot is historical evidence of what was quoted at the time of sale.
 
 ```text
-Field Action
-    ↓
-Network Available?
-   /         \
- Yes          No
+Approved Offer
+     ↓
+Representative Price Breakdown
+     ↓
+Saved offer_snapshot
+     ↓
+Customer Confirmation
+```
+
+See [`examples/pricing-offer-snapshot.js`](examples/pricing-offer-snapshot.js).
+
+---
+
+## 5. Partial Sale Capture Without Polluting Completed Sales
+
+A representative may collect useful information before the customer declines or the interaction stops. Discarding the information loses follow-up value; storing it as a sale corrupts reporting.
+
+FieldOS separates the lifecycle:
+
+```text
+Interaction Starts
+       ↓
+Local Draft / Partial Attempt
+      / \
+     /   \
+No Sale   Completed Sale
   ↓            ↓
-Database    Local Queue
-               ↓
-        Connectivity Returns
-               ↓
-          Replay Operation
-               ↓
-            Database
+Abandoned    Converted
 ```
 
-This makes the workflow more practical for mobile field use.
+Partial records can preserve the furthest step reached while remaining excluded from sales totals, booking capacity, invoicing, and vendor-payment counts.
+
+See [`examples/partial-sale-capture.js`](examples/partial-sale-capture.js).
 
 ---
 
-## Real-Time Installation Availability
+## 6. Idempotent Customer Communications
 
-Installation capacity can change while multiple representatives are working.
+Database webhooks may retry. Sending an email directly on every webhook delivery risks duplicate customer confirmations.
 
-Supabase Realtime is used to help propagate database changes to active devices.
-
-The application also keeps a lightweight polling fallback because mobile browsers, cellular connections, and WebSocket sessions are not always reliable.
+The server-side flow reserves the confirmation first:
 
 ```text
-Database Change
-      ↓
-Realtime Event
-      ↓
-Refresh Schedule
-
-        +
-
-Periodic Reconciliation
-      ↓
-Database
-      ↓
-Refresh Schedule
+pending → sending → sent
+                  ↘ failed
+pending → skipped
 ```
 
-The database remains the source of truth rather than depending entirely on the browser's local view of capacity.
+Only the request that successfully transitions `pending` to `sending` is allowed to contact the mail server. The email then uses the persisted sale's pricing snapshot rather than reconstructing the promotion independently.
+
+See [`examples/sale-confirmation-webhook.js`](examples/sale-confirmation-webhook.js).
 
 ---
 
-## Transactional Customer Notifications
+## 7. Safe PWA Updates in a Field Environment
 
-A successful order can trigger a customer confirmation workflow.
+A browser-based field application can remain open for hours or days. Service-worker caching creates another reliability problem: a partial deployment can leave the HTML, JavaScript, service worker, and required-build marker on different versions.
 
-Database webhook events may occasionally be retried or delivered more than once, so the notification workflow uses a conditional state transition before sending the message.
+FieldOS coordinates the release using synchronized build markers and includes a reload guard so a partial deployment cannot trap the user in an infinite refresh loop.
+
+Updates are also deferred when unsynced work exists.
 
 ```text
-Order Created
-      ↓
-Database Webhook
-      ↓
-Notification Pending?
-      ↓
-Reserve Notification
-      ↓
-Send Email
-      ↓
-Record Delivery Status
+New Build Detected
+       ↓
+Pending Local Work?
+   /             \
+ Yes             No
+  ↓               ↓
+Defer          Reload Once
+                  ↓
+            Build Matches?
+             /        \
+           Yes        No
+            ↓          ↓
+          Done      Guard / Retry
 ```
 
-Only the process that successfully reserves the notification can continue with delivery.
+See [`examples/pwa-update-coordinator.js`](examples/pwa-update-coordinator.js).
 
 ---
 
-## External Schedule Reconciliation
+## 8. Downstream CRM / Warehouse Lifecycle Validation
 
-External scheduling information can be useful without giving an outside source direct control over live installation capacity.
+A completed field sale eventually has downstream account, work-order, installation, disconnect, and financial states. Those systems can affect invoice eligibility and clawback decisions, so external data should not blindly overwrite FieldOS.
 
-The reconciliation workflow can first record what the external source **would** change:
+FieldOS uses an external location identifier to correlate the service location and compares expected vs. observed lifecycle state.
 
 ```text
-External Schedule
-        ↓
-Normalize Data
-        ↓
-Compare With FieldOS
-        ↓
-Audit Result
-        ↓
-Review / Validation
+FieldOS Sale
+     ↓
+External Location ID
+     ↓
+CRM / Work Order / Warehouse Feed
+     ↓
+Validation Layer
+     ↓
+Match / Mismatch / Exception / Review
 ```
 
-This creates an audit layer between external data and live scheduling operations.
+The current architecture is deliberately **validation-first**. Controlled automatic write-back is a future phase after the relationship and exception rules are proven reliable.
+
+See [`examples/lifecycle-validation.sql`](examples/lifecycle-validation.sql).
 
 ---
 
-# Implementation Examples
+# Data Architecture
 
-The full production application remains private, but this repository includes sanitized code examples based on implementation patterns used in FieldOS.
+The production system uses PostgreSQL/Supabase as the operational source of truth. The public showcase intentionally uses conceptual entity names rather than publishing the complete private schema.
 
-These examples demonstrate the engineering approach without exposing production schemas, credentials, customer information, pricing rules, territory configuration, vendor information, or proprietary business logic.
+```mermaid
+flowchart LR
+    LOCATION[Service Location] --> ACTIVITY[Activity Events]
+    LOCATION --> ATTEMPT[Partial Attempts]
+    LOCATION --> SALE[Completed Sales]
 
----
+    REP[Representative] --> ASSIGN[Territory Assignments]
+    ASSIGN --> LOCATION
+    REP --> ACTIVITY
+    REP --> SALE
 
-## Transactional Sale Submission
+    OFFER[Approved Offer] --> SNAPSHOT[Offer Snapshot]
+    SNAPSHOT --> SALE
 
-**[View `transactional-sale-client.js` →](examples/transactional-sale-client.js)**
+    SLOT[Install Slot] --> BOOKING[Booking]
+    BOOKING --> SALE
 
-A simplified client-side example showing how a sale can be submitted as one transactional workflow.
+    SALE --> REVIEW[Operational Review]
+    REVIEW --> INVOICE[Invoice / Adjustment]
+    SALE --> VALIDATE[Lifecycle Validation]
+```
 
-**Demonstrates:**
-
-- Supabase RPC calls
-- Transactional workflows
-- Client-generated submission IDs
-- Idempotent retries
-- Transaction-response validation
-- Connectivity-aware submission handling
-- Schedule reconciliation
-
----
-
-## Offline Synchronization Queue
-
-**[View `offline-sync-queue.js` →](examples/offline-sync-queue.js)**
-
-A browser-side queue pattern for preserving field activity when connectivity is unavailable and replaying it when the device reconnects.
-
-**Demonstrates:**
-
-- Offline-first workflow design
-- Browser local storage
-- Sequential task replay
-- Retry metadata
-- RPC synchronization
-- Connectivity detection
-- Failure preservation
+The key design choice is to preserve **events and lifecycle records** instead of overwriting all history into one status field. A sale, an installation outcome, and a later clawback are different business facts and should remain independently auditable.
 
 ---
 
-## Real-Time Schedule Synchronization
+# Access & Security Model
 
-**[View `realtime-schedule-sync.js` →](examples/realtime-schedule-sync.js)**
+The public showcase intentionally avoids implying a single authentication mechanism across every surface.
 
-A simplified example of keeping installation availability current across devices while accounting for missed WebSocket events and unstable mobile connections.
+### Representative-facing field app
 
-**Demonstrates:**
+The field launch flow is optimized for speed and assignment lookup. An active representative identity is matched to configured territory assignments, and the browser operates with intentionally limited client permissions.
 
-- Supabase Realtime
-- PostgreSQL change subscriptions
-- Debounced refreshes
-- Polling fallback
-- Browser visibility checks
-- Online/offline handling
-- Serialized refresh operations
-- Database reconciliation
+### Administrative / management surfaces
 
----
+Administrative and management workflows use authenticated sessions and application/database authorization rules.
 
-## Customer Confirmation Webhook
+### Browser-safe vs. server-only credentials
 
-**[View `sale-confirmation-webhook.js` →](examples/sale-confirmation-webhook.js)**
+Browser code may contain only public client configuration appropriate for the platform's Row Level Security and grants. Privileged credentials—service-role access, SMTP credentials, webhook secrets, and other sensitive integration keys—remain server-side.
 
-A server-side notification pattern that reserves the notification state before sending so duplicate webhook events do not create duplicate customer messages.
+### Public showcase policy
 
-**Demonstrates:**
+This repository does **not** include:
 
-- Serverless API handlers
-- Database webhooks
-- Secret validation
-- Environment-based configuration
-- Conditional database updates
-- Duplicate-send prevention
-- SMTP delivery
-- Delivery-state tracking
+- customer names or contact information,
+- real serviceable-address universes,
+- production secrets,
+- internal endpoints,
+- exact vendor configuration,
+- unredacted operational exports,
+- full production database schema,
+- proprietary pricing records.
 
 ---
 
-## Schedule Reconciliation Audit
+# Technology Stack
 
-**[View `schedule-reconciliation-audit.sql` →](examples/schedule-reconciliation-audit.sql)**
+| Layer | Technology / Pattern | Responsibility |
+|---|---|---|
+| Field UI | HTML, CSS, vanilla JavaScript | Mobile field workflow, maps, forms, pricing, scheduling |
+| Operational UI | HTML, CSS, JavaScript | Dashboards, review queues, management/admin tooling |
+| Database | PostgreSQL | Transactional and operational state |
+| Managed data services | Supabase | PostgreSQL access, Realtime, authentication services |
+| Database logic | SQL / PL/pgSQL / RPC | Controlled multi-record operations and reporting logic |
+| Realtime | Supabase Realtime | Fast cross-device change propagation |
+| Resilience | Browser storage + service worker | Offline queue, local drafts, PWA caching |
+| Mapping | Leaflet / geospatial coordinates | Service-location and territory visualization |
+| Reporting | Chart.js + operational queries | KPI and trend visualization |
+| Server runtime | Node.js / Vercel Serverless Functions | Privileged integration workflows |
+| Customer email | Nodemailer / SMTP | Transactional confirmations |
+| Integration pattern | REST/webhooks/warehouse validation | External system communication and reconciliation |
 
-A PostgreSQL example showing how external scheduling information can be audited before being allowed to affect live scheduling.
-
-**Demonstrates:**
-
-- PostgreSQL schema design
-- SQL constraints
-- Unique source identifiers
-- JSONB
-- Indexing
-- Row Level Security
-- Service-role permissions
-- Controlled workflow states
-- Audit-first integration design
-
----
-
-### More About the Examples
-
-**[View the Implementation Examples README →](examples/README.md)**
-
-The examples README explains how the individual code samples relate to the larger production architecture.
+The production front end is intentionally lightweight: primarily vanilla JavaScript, with shared correctness pushed into PostgreSQL/RPC logic and trusted server-side workflows where appropriate.
 
 ---
 
-# Technical Documentation
-
-For a deeper look at the system:
-
-- **[System Architecture →](docs/architecture.md)**  
-  Application architecture, data domains, user roles, integrations, security, and end-to-end system design.
-
-- **[Technical Overview →](docs/technical-overview.md)**  
-  Implementation details covering the technology stack, database design, scheduling concurrency, sales workflows, APIs, reporting, testing, deployment, and engineering decisions.
-
-- **[Implementation Examples →](examples/README.md)**  
-  Sanitized examples covering transactional sales, offline synchronization, real-time scheduling, customer notifications, and PostgreSQL integration design.
-
----
-
-# My Role
-
-I designed and developed FieldOS from the initial business requirements through production deployment and ongoing operation.
-
-My work included:
-
-- Identifying and mapping the original business processes
-- Application architecture
-- Workflow design
-- Database architecture
-- Front-end development
-- Back-end development
-- SQL and PL/pgSQL
-- API integrations
-- Address and territory workflows
-- Interactive mapping
-- Scheduling and capacity logic
-- Transactional sales workflows
-- Offline synchronization
-- Real-time data synchronization
-- Customer-notification automation
-- Sales review and invoicing workflows
-- Reporting and analytics
-- Administrative tooling
-- Data-quality controls
-- Testing
-- Deployment
-- Production troubleshooting
-- Ongoing feature development and support
-
-The project required me to work across both the business and technical sides of the system: understanding how field sales and operations actually work, translating those processes into software, and continuing to improve the platform as new operational needs emerged.
-
----
-
-# Source Code & Production Data
-
-The complete FieldOS production repository remains private because it contains:
-
-- Proprietary company workflows
-- Customer and operational information
-- Internal address and territory data
-- Pricing and package rules
-- Vendor configuration
-- Infrastructure configuration
-- Credentials and integrations
-- Production database schemas
-- Company-specific business logic
-
-This public repository is a sanitized portfolio representation of the system.
-
-The screenshots, documentation, architecture, and implementation examples are intended to show what I built, the problems it solves, and the engineering approach behind it without exposing the production environment.
-
----
-
-## Summary
-
-FieldOS connects the complete field-sales workflow:
+# Repository Structure
 
 ```text
-Territories & Addresses
-        ↓
-Field Representatives
-        ↓
-Door Activity
-        ↓
-Sales
-        ↓
-Installation Scheduling
-        ↓
-Operations Review
-        ↓
-Installation Outcomes
-        ↓
-Invoicing
-        ↓
-Reporting & Analytics
+fieldos-project-showcase/
+│
+├── README.md
+├── docs/
+│   ├── architecture.md
+│   └── technical-overview.md
+│
+├── examples/
+│   ├── README.md
+│   ├── transactional-sale-client.js
+│   ├── offline-sync-queue.js
+│   ├── realtime-schedule-sync.js
+│   ├── pricing-offer-snapshot.js
+│   ├── partial-sale-capture.js
+│   ├── sale-confirmation-webhook.js
+│   ├── pwa-update-coordinator.js
+│   ├── lifecycle-validation.sql
+│   └── schedule-reconciliation-audit.sql
+│
+└── images/
+    ├── 01_company_sales_dashboard.png
+    ├── 02_install_schedule_availability.png
+    ├── 03_sales_review_invoicing.png
+    ├── 04_executive_command_center.png
+    ├── 06_territory_map.png
+    └── 08_sales_form_example.png
 ```
 
-What started as a need to better organize field-sales activity grew into a broader operational platform connecting representatives, scheduling, sales, operations, data, and management reporting in one system.
+The code examples are simplified and sanitized implementation patterns. They are intended to demonstrate engineering decisions, not recreate the private production application.
+
+---
+
+# Deeper Documentation
+
+- [`docs/architecture.md`](docs/architecture.md) — system boundaries, data flows, access model, failure handling, and lifecycle design.
+- [`docs/technical-overview.md`](docs/technical-overview.md) — implementation-oriented walkthrough of the production architecture and engineering decisions.
+- [`examples/README.md`](examples/README.md) — guide to the sanitized code and SQL examples.
+
+---
+
+# What This Project Demonstrates
+
+FieldOS required work across both software engineering and operational system design:
+
+- translating business workflows into durable data models,
+- designing mobile-first field interfaces,
+- geospatial/address-centered workflows,
+- transactional consistency,
+- idempotency,
+- shared-resource concurrency,
+- offline resilience,
+- Realtime synchronization,
+- PWA deployment/version safety,
+- dynamic pricing configuration,
+- immutable historical snapshots,
+- lifecycle/state-machine design,
+- webhook and SMTP integration,
+- PostgreSQL/SQL design,
+- data-quality safeguards,
+- operational reporting,
+- financial workflow support,
+- external-system reconciliation,
+- progressive automation rather than unsafe write-back.
+
+The part I consider most important is that the application is not just a collection of screens. It is a connected operating model in which the same service location can be followed from **field activity → customer decision → sale → installation → financial review → downstream lifecycle**.
+
+---
+
+## Status
+
+FieldOS remains an actively developed private production system. This public repository is maintained as a technical showcase and may evolve as additional production capabilities are appropriate to describe publicly.
