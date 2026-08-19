@@ -1,227 +1,174 @@
 /**
- * Transactional Sale Confirmation Webhook
+ * Idempotent Customer Confirmation Webhook
  *
- * Simplified public example based on a FieldOS serverless handler.
- *
- * The important reliability pattern is the conditional state transition:
- *
- * pending -> sending -> sent
- *
- * A duplicate database webhook cannot reserve the same notification twice.
+ * Sanitized public example based on FieldOS.
+ * Production schema names, addresses, credentials, and pricing are omitted.
  */
 
-import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
+import { createClient } from '@supabase/supabase-js';
 
 function clean(value) {
   return String(value ?? '').trim();
 }
 
-function looksLikeEmail(value) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean(value));
-}
-
 function respond(response, status, body) {
-  response.status(status).json(body);
+  return response.status(status).json(body);
 }
 
-function buildMessage(order, address) {
-  const customerName = clean(order.customer_name) || 'Customer';
-  const firstName = customerName.split(/\s+/)[0] || 'there';
+function parseObject(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value;
+  }
 
-  const serviceAddress = [
-    address?.address_1,
-    address?.city,
-    address?.state,
-    address?.postal_code,
-  ]
-    .filter(Boolean)
-    .join(', ');
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
+
+function money(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount)
+    ? new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+      }).format(amount)
+    : '';
+}
+
+function buildMessage(order) {
+  // Persisted historical snapshot is the pricing source of truth.
+  const offer = parseObject(order.offer_snapshot);
 
   const packageName =
-    clean(order.package_name) ||
-    'Internet service';
+    clean(offer.package_name) || clean(order.package_name) || 'Internet Service';
+
+  const promotion =
+    clean(offer.promo_display) || clean(order.promotion_display);
+
+  const promoTerm =
+    clean(offer.promo_term_label) || clean(order.promotion_term);
+
+  const monthlyTotal = money(
+    offer.month_one_total ?? order.estimated_monthly_total
+  );
+
+  const afterPromotion =
+    clean(offer.standard_rate_label) || clean(order.standard_rate_display);
+
+  const lines = [
+    `Package: ${packageName}`,
+    promotion && `Promotion: ${promotion}`,
+    promoTerm && `Promotion term: ${promoTerm}`,
+    monthlyTotal && `Estimated promotional monthly total: ${monthlyTotal}`,
+    afterPromotion && `After promotion: ${afterPromotion}`,
+  ].filter(Boolean);
 
   return {
-    subject: `Service order confirmation – ${packageName}`,
-
-    text: [
-      `Hi ${firstName},`,
-      '',
-      'Your service order has been submitted successfully.',
-      '',
-      serviceAddress
-        ? `Service address: ${serviceAddress}`
-        : null,
-      `Package: ${packageName}`,
-      order.install_date
-        ? `Installation date: ${order.install_date}`
-        : null,
-      '',
-      'Our team will contact you if anything else is needed.',
-    ]
-      .filter((line) => line !== null)
-      .join('\n'),
+    subject: `Your order confirmation – ${packageName}`,
+    text: `Thank you for your order.\n\n${lines.join('\n')}`,
   };
 }
 
 export default async function handler(request, response) {
   if (request.method !== 'POST') {
-    response.setHeader('Allow', 'POST');
-    return respond(response, 405, {
-      error: 'Method not allowed',
-    });
+    return respond(response, 405, { error: 'Method not allowed' });
   }
-
-  const requiredEnv = [
-    'SUPABASE_URL',
-    'SUPABASE_SERVICE_ROLE_KEY',
-    'WEBHOOK_SECRET',
-    'SMTP_HOST',
-    'SMTP_PORT',
-    'SMTP_USER',
-    'SMTP_PASSWORD',
-    'SMTP_FROM_EMAIL',
-  ];
-
-  const missing = requiredEnv.filter(
-    (name) => !process.env[name]
-  );
-
-  if (missing.length) {
-    console.error(
-      'Missing required environment variables:',
-      missing.join(', ')
-    );
-
-    return respond(response, 500, {
-      error: 'Notification service is not configured',
-    });
-  }
-
-  const suppliedSecret = clean(
-    request.headers['x-app-webhook-secret']
-  );
 
   if (
-    !suppliedSecret ||
-    suppliedSecret !== process.env.WEBHOOK_SECRET
+    clean(request.headers['x-webhook-secret']) !==
+    clean(process.env.ORDER_WEBHOOK_SECRET)
   ) {
-    return respond(response, 401, {
-      error: 'Unauthorized',
-    });
+    return respond(response, 401, { error: 'Unauthorized' });
   }
 
-  const event = request.body || {};
-  const order = event.record || event.new || {};
+  const webhookOrder = request.body?.record || {};
 
-  if (
-    clean(event.type).toUpperCase() !== 'INSERT' ||
-    clean(event.table) !== 'orders' ||
-    !order.id
-  ) {
-    return respond(response, 400, {
-      error: 'Expected an order INSERT webhook',
-    });
+  if (!webhookOrder.id) {
+    return respond(response, 400, { error: 'Missing order' });
   }
 
   const supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    }
+    { auth: { persistSession: false } }
   );
 
-  const recipient = clean(order.email).toLowerCase();
-
-  if (!looksLikeEmail(recipient)) {
-    await supabase
-      .from('orders')
-      .update({
-        confirmation_status: 'skipped',
-        confirmation_error: recipient
-          ? 'Customer email is invalid'
-          : 'Customer email is blank',
-      })
-      .eq('id', order.id)
-      .eq('confirmation_status', 'pending');
-
-    return respond(response, 200, {
-      status: 'skipped',
-    });
-  }
-
   /**
-   * Reserve the notification before contacting SMTP.
-   *
-   * Only the first webhook that finds the row in "pending" state can move it
-   * to "sending". Duplicate webhook deliveries become no-ops.
+   * Atomic reservation:
+   * only one webhook delivery can change pending -> sending.
    */
-  const {
-    data: reserved,
-    error: reserveError,
-  } = await supabase
-    .from('orders')
+  const { data: reserved, error: reserveError } = await supabase
+    .from('completed_sales')
     .update({
       confirmation_status: 'sending',
       confirmation_error: null,
     })
-    .eq('id', order.id)
+    .eq('id', webhookOrder.id)
     .eq('confirmation_status', 'pending')
     .select('id')
     .maybeSingle();
 
   if (reserveError) {
-    console.error(
-      'Could not reserve notification:',
-      reserveError
-    );
-
-    return respond(response, 500, {
-      error: 'Could not reserve notification',
-    });
+    return respond(response, 500, { error: 'Could not reserve confirmation' });
   }
 
   if (!reserved) {
-    return respond(response, 200, {
-      status: 'already_processed',
-    });
+    return respond(response, 200, { status: 'already_processed' });
   }
 
-  let address = null;
+  /**
+   * Reload persisted order so the email uses the database copy of
+   * offer_snapshot rather than depending on a possibly partial webhook row.
+   */
+  const { data: order, error: orderError } = await supabase
+    .from('completed_sales')
+    .select('*')
+    .eq('id', webhookOrder.id)
+    .single();
 
-  if (order.address_id) {
-    const result = await supabase
-      .from('addresses')
-      .select('address_1,city,state,postal_code')
-      .eq('id', order.address_id)
-      .maybeSingle();
+  if (orderError || !order) {
+    await supabase
+      .from('completed_sales')
+      .update({
+        confirmation_status: 'failed',
+        confirmation_error: 'Could not reload persisted order',
+      })
+      .eq('id', webhookOrder.id);
 
-    if (!result.error) {
-      address = result.data;
-    }
+    return respond(response, 500, { error: 'Could not load order' });
   }
 
-  const message = buildMessage(order, address);
+  const recipient = clean(order.customer_email).toLowerCase();
+
+  if (!recipient) {
+    await supabase
+      .from('completed_sales')
+      .update({ confirmation_status: 'skipped' })
+      .eq('id', order.id)
+      .eq('confirmation_status', 'sending');
+
+    return respond(response, 200, { status: 'skipped' });
+  }
+
+  const message = buildMessage(order);
 
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT),
+    port: Number(process.env.SMTP_PORT || 587),
     secure: false,
     requireTLS: true,
     auth: {
-      user: process.env.SMTP_USER,
+      user: process.env.SMTP_USERNAME,
       pass: process.env.SMTP_PASSWORD,
     },
-    tls: {
-      minVersion: 'TLSv1.2',
-    },
-    connectionTimeout: 15000,
-    socketTimeout: 30000,
   });
 
   try {
@@ -230,13 +177,11 @@ export default async function handler(request, response) {
       to: recipient,
       subject: message.subject,
       text: message.text,
-      headers: {
-        'Auto-Submitted': 'auto-generated',
-      },
+      headers: { 'Auto-Submitted': 'auto-generated' },
     });
 
     await supabase
-      .from('orders')
+      .from('completed_sales')
       .update({
         confirmation_status: 'sent',
         confirmation_sent_at: new Date().toISOString(),
@@ -246,18 +191,12 @@ export default async function handler(request, response) {
       .eq('id', order.id)
       .eq('confirmation_status', 'sending');
 
-    return respond(response, 200, {
-      status: 'sent',
-    });
+    return respond(response, 200, { status: 'sent' });
   } catch (error) {
-    const safeError = clean(
-      error?.message || 'SMTP delivery failed'
-    ).slice(0, 500);
-
-    console.error('SMTP delivery failed:', safeError);
+    const safeError = clean(error?.message || 'SMTP delivery failed').slice(0, 500);
 
     await supabase
-      .from('orders')
+      .from('completed_sales')
       .update({
         confirmation_status: 'failed',
         confirmation_error: safeError,
@@ -265,8 +204,6 @@ export default async function handler(request, response) {
       .eq('id', order.id)
       .eq('confirmation_status', 'sending');
 
-    return respond(response, 502, {
-      error: 'SMTP delivery failed',
-    });
+    return respond(response, 502, { error: 'SMTP delivery failed' });
   }
 }
