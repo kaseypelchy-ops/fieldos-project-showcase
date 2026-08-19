@@ -1,4 +1,3 @@
-# Include public implementation examples in GitHub Linguist statistics.
-
+# Treat sanitized public implementation examples as source code for GitHub Linguist.
 examples/*.js -linguist-documentation linguist-detectable=true
 examples/*.sql -linguist-documentation linguist-detectable=true
